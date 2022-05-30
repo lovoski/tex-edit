@@ -1,0 +1,14 @@
+.vscode/
+
+*.o
+*.O
+*.s
+*.S
+
+3rdparty/*
+
+/.qt_for_python/
+
+/server/server
+/server/test/
+/test/

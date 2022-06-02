@@ -14,9 +14,11 @@ public:
 signals:
     void start_sock_thread();
     void finish_sock_thread();
+    void start_recv_thread_alone();
 public slots:
     void emit_start_sig();
     void emit_finish_sig();
+    void emit_start_recv_signal_alone();
 };
 
 class SocketThread : public QObject
@@ -26,20 +28,16 @@ public:
     SocketThread(QObject *parent = nullptr);
     ~SocketThread();
     // setting up the information needed for connecting to server
-    void set_connection_info(QString host, QString name_id, unsigned int port);
 
-private:
-    QString host;
-    QString name_id;
-    unsigned int port;
-
+public:
     int sockfd = 0;
     bool connected = 0;
 
 public slots:
     // setting up basic behavior of a socket
-    void connect_to_server();
-    void close_connection();
+
+    /* the socket thread only handle the receiveing procedure */
+    void start_listening_thread();
 };
 
 #endif // SOCKET_THREAD_H

@@ -40,12 +40,19 @@ public:
 
     void connet_slots();
     void closeEvent(QCloseEvent *event);
+
+    void send_msg_to_server(QString msg);
+    void close_connection();
+    void connect_to_server();
+
 private:
     void setup_editor();
     void bind_shortcut();
 signals:
     //void give_alert_msg(QString &msg);
     void window_closing();
+    void send_msg_to_server_request(QString str);
+
 public slots:
     void on_open();
     void on_save();
@@ -70,10 +77,19 @@ public slots:
     // show position of cursor
     void cursor_position_process(int l, int r);
 
+    // parse message to be send to signal
+    void send_message_to_server_main_thread(QString &msg, char type);
+    void set_connection_info(QString host, QString name_id, unsigned int port);
+
 private:
 
+    QString host;
+    QString name_id;
+    unsigned int port;
+
     bool sub_thread_running = 0;
-    bool conn_stat = 0;
+    bool connected = 0;
+    int sockfd = -1;
 
     int cursor_line = 0;
     int cursor_index = 0;

@@ -1,0 +1,20 @@
+CC=gcc
+CPP=g++
+C_FILES=test_server.c \
+		threadpool.c \
+		str_utils.c \
+		access_sql.c
+C_OBJ=test_server.o \
+		threadpool.o \
+		str_utils.o \
+		access_sql.o
+TARGET=test_server
+
+all:
+	$(CC) -c $(C_FILES) -I. -I /usr/include/mysql
+	$(CC) $(C_OBJ) -o $(TARGET) -lpthread -lmysqlclient
+	$(CPP) -c test_client.cpp
+	$(CPP) test_client.o -o test_client -lpthread 
+
+clean:
+	rm -rf *.o test_server test_client

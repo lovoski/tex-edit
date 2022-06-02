@@ -2,6 +2,90 @@
 #include "include/Qsci/qscilexercpp.h"
 #include "include/Qsci/qscilexerpython.h"
 
+extern "C"
+{
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <arpa/inet.h>
+
+#define MBUF_SIZE   1024
+#define SEP_SYB     1
+
+void MainWindow::send_msg_to_server(QString msg)
+{
+    if (this->connected) {
+        printf("mainwindow send\n");
+        int len = msg.length();
+        if (len > MBUF_SIZE) {
+            printf("too long string\n");
+        } else {
+            char send_buf[MBUF_SIZE];
+            memset(send_buf, 0, MBUF_SIZE);
+            std::string tmp = msg.toStdString();
+            for (int i = 0;i < len;++i) {
+                send_buf[i] = tmp[i];
+            }
+            int n = ::write(this->sockfd, send_buf, MBUF_SIZE);
+            if (n == -1) printf("mainwindow send error\n");
+        }
+        // ::write(this->sockfd, );
+    } else {
+        printf("mainwindow connected false\n");
+    }
+}
+
+void MainWindow::close_connection()
+{
+    if (this->connected) {
+        std::cout << "close mainwindow sockfd, s_thread connected set false" << std::endl;
+        ::close(sockfd); // close the connection
+        this->connected = false;
+        this->s_thread->connected = false;
+    }
+}
+
+/* hadling the connecting event, only connect to server */
+void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: namespace for C function
+{
+    if (!this->connected) {
+        int sockfd = 0;
+        struct sockaddr_in serv_addr;
+        if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+            printf("\n Error : Could not create socket \n");
+            return;
+        }
+        this->sockfd = sockfd; // specify the conncetion in the class
+
+        memset(&serv_addr, '0', sizeof(serv_addr));
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_port = htons(this->port);
+        if (inet_pton(AF_INET, this->host.toStdString().c_str(), &serv_addr.sin_addr) <= 0) {
+            printf("\n inet_pton error occured\n");
+            return;
+        }
+        if (::connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+            printf("\n Error : Connect Failed \n");
+            return;
+        }
+        char tmp_send[1024];
+        tmp_send[0] = 'm';
+        ::write(this->sockfd, tmp_send, 1024); // first contact
+        this->connected = 1; // only by this far can the conection be secured to be valid
+        
+        /* tell the sub-thread what the file descipter is, setup dead loop */
+        this->s_thread->sockfd = this->sockfd;
+        this->s_thread->connected = true;
+        this->sig_col->emit_start_recv_signal_alone(); // tell the recv thread start working
+    }
+}
+}
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -12,7 +96,6 @@ MainWindow::MainWindow(QWidget *parent)
     this->s_thread = new SocketThread;
     this->dialog = new Conn_Dialog;
     //this->a_dialog = new Alert_Dialog;
-    this->s_thread->set_connection_info("", "client", 0);
     this->s_thread->moveToThread(this->m_thread);
 
     setup_editor();
@@ -97,8 +180,11 @@ void MainWindow::setup_editor()
 
 void MainWindow::connet_slots()
 {
-    QObject::connect(sig_col, &SignalCollection::start_sock_thread, s_thread, &SocketThread::connect_to_server);
-    QObject::connect(sig_col, &SignalCollection::finish_sock_thread, s_thread, &SocketThread::close_connection);
+    QObject::connect(sig_col, &SignalCollection::start_sock_thread, this, &MainWindow::connect_to_server);
+    // QObject::connect(sig_col, &SignalCollection::start_sock_thread, s_thread, &SocketThread::start_listening_thread);
+    // the formal signal is sent only when the connection is ensured to be valid
+    QObject::connect(sig_col, &SignalCollection::start_recv_thread_alone, s_thread, &SocketThread::start_listening_thread);
+    QObject::connect(sig_col, &SignalCollection::finish_sock_thread, this, &MainWindow::close_connection);
 
     QObject::connect(open, &QAction::triggered, this, &MainWindow::on_open);
     QObject::connect(save, &QAction::triggered, this, &MainWindow::on_save);
@@ -115,6 +201,8 @@ void MainWindow::connet_slots()
     QObject::connect(dialog, &Conn_Dialog::cancel_clicked, this, &MainWindow::process_cancel_input);
     QObject::connect(this, &MainWindow::window_closing, this, &MainWindow::processing_bef_window_closed);
 
+    // send message to server when action is detected
+    QObject::connect(this, &MainWindow::send_msg_to_server_request, this, &MainWindow::send_msg_to_server);
     //QObject::connect(a_dialog, &Alert_Dialog::alert_confirm_clicked, this, &MainWindow::close_alert_dialog);
 }
 
@@ -189,22 +277,25 @@ void MainWindow::on_connect()
 }
 void MainWindow::on_disconnect()
 {
-    if (conn_stat) { // judge the existence of connection
+    if (this->connected) { // judge the existence of connection
         QMessageBox msgBox;
         msgBox.setText(tr("disconnnected from server"));
         msgBox.exec();
         std::cout << "disconnect from server" << std::endl;
-        this->s_thread->close_connection();
+        this->close_connection();
+        this->s_thread->connected = false; // kill the dead loop
         this->m_thread->quit();
         this->m_thread->wait();
-        this->conn_stat = 0;
-        this->sub_thread_running = 0;
+        this->connected = false;
+        this->sub_thread_running = false;
     }
 }
 void MainWindow::m_on_compile_show(){}
 void MainWindow::m_on_compile_only(){}
 void MainWindow::on_help(){}
 void MainWindow::on_about(){}
+
+/* process info from the connection dialog */
 void MainWindow::process_dialog_input(QString &msg)
 {
     this->dialog->hide();
@@ -214,19 +305,26 @@ void MainWindow::process_dialog_input(QString &msg)
     } else {
         std::cout << msg.toStdString() << std::endl;
         QStringList sL = msg.split(":");
-        this->s_thread->set_connection_info(sL[0], "client", sL[1].toInt());
+        this->set_connection_info(sL[0], "client", sL[1].toInt()); // set connect info of MainWindow
         // starting the sub-thread for socket connection
         if (sub_thread_running) {
             std::cout << "sub thread already running" << std::endl;
         } else {
             std::cout << "starting sub thread" << std::endl;
             this->m_thread->start();
-            // tell the s_thread to start connecting
+            // tell the sub-thread to start connecting
             this->sig_col->emit_start_sig();
             this->sub_thread_running = 1;
-            this->conn_stat = 1;
+            this->connected = 1;
         }
     }
+}
+
+void MainWindow::set_connection_info(QString host, QString name_id, unsigned int port)
+{
+    this->host = host;
+    this->name_id = name_id;
+    this->port = port;
 }
 
 void MainWindow::process_cancel_input()
@@ -248,8 +346,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 void MainWindow::processing_bef_window_closed()
 {
     if (sub_thread_running) {
-        this->s_thread->close_connection();
-        this->conn_stat = 0;
+        this->close_connection();
+        this->connected = 0;
+        this->s_thread->connected = false; // stop the process using break in dead loop
         this->m_thread->quit();
         this->m_thread->wait();
         sub_thread_running = 0;
@@ -275,6 +374,34 @@ QString tell_diff(QString &bef_line, QString &aft_line)
     return QString(val);
 }
 
+void MainWindow::send_message_to_server_main_thread(QString &msg, char type)
+{
+    QString tmp = msg;
+    QString concate;
+    char head[5] = {'m', 1, 0, 1};
+    QString sep('\1');
+    QString len = QString::number(tmp.length(), 10);
+
+    if (type == 'a') { // add string
+        head[2] = 'a';
+        concate = QString(head) + len + sep + tmp;
+    } else if (type == 'd') { // delete string
+        head[2] = 'd';
+        concate = QString(head) + len + sep + tmp;
+    } else if (type == 'c') { // compile whole text
+        head[2] = 'c';
+        std::cout << "compile" << std::endl;
+    } else if (type == 'o') { // open destinated text
+        head[2] = 'o';
+        std::cout << "open" << std::endl;
+    } else {
+        std::cout << "others" << std::endl;
+    }
+    // printf("length of concate msg: %d\n", concate.length());
+    // std::cout << concate.toStdString() << std::endl;
+    emit send_msg_to_server_request(concate); // emit signal with modifiyed msg
+}
+
 void MainWindow::cursor_position_process(int l, int r)
 {
     QString aft_text = m_editor->text();
@@ -286,9 +413,11 @@ void MainWindow::cursor_position_process(int l, int r)
         std::cout << "  bef:" << bef << "  aft:" << aft << std::endl;
         if (bef < aft) { // add char
             QString text = m_editor->text(bef, aft); // the added string
+            send_message_to_server_main_thread(text, 'a');
             //std::cout << "  add:" << text.toStdString() << std::endl;
         } else { // delete char
             QString text = tell_diff(bef_text, aft_text);
+            send_message_to_server_main_thread(text, 'd');
             //std::cout << "  mdel:" << text.toStdString() << std::endl;
         }
     }

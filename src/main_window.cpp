@@ -1,4 +1,6 @@
 #include "include/main_window.h"
+#include "include/Qsci/qscilexercpp.h"
+#include "include/Qsci/qscilexerpython.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -12,6 +14,9 @@ MainWindow::MainWindow(QWidget *parent)
     //this->a_dialog = new Alert_Dialog;
     this->s_thread->set_connection_info("", "client", 0);
     this->s_thread->moveToThread(this->m_thread);
+
+    setup_editor();
+    bind_shortcut();
 
     this->resize(600, 500);
     this->move(QApplication::desktop()->width() * 0.5 - WD_WIDHT / 2
@@ -73,6 +78,23 @@ MainWindow::~MainWindow()
     delete comp_o;
 }
 
+void MainWindow::setup_editor()
+{
+    //QsciLexerCPP *textLexer = new QsciLexerCPP;
+    //m_editor->setLexer(textLexer);
+    m_editor->setCaretForegroundColor(QColor(250,0,0));
+    //m_editor->setCaretWidth(5);
+    QFont dest_font;
+    dest_font.setPointSize(13);
+    m_editor->setFont(dest_font);
+    m_editor->setCaretLineVisible(true);
+    m_editor->setCaretLineBackgroundColor(QColor(200,200,200));
+    m_editor->setMarginType(0, QsciScintilla::NumberMargin);
+    m_editor->setMarginWidth(0, 30);
+
+    QObject::connect(m_editor, &QsciScintilla::cursorPositionChanged, this, &MainWindow::cursor_position_process);
+}
+
 void MainWindow::connet_slots()
 {
     QObject::connect(sig_col, &SignalCollection::start_sock_thread, s_thread, &SocketThread::connect_to_server);
@@ -81,6 +103,7 @@ void MainWindow::connet_slots()
     QObject::connect(open, &QAction::triggered, this, &MainWindow::on_open);
     QObject::connect(save, &QAction::triggered, this, &MainWindow::on_save);
     QObject::connect(close, &QAction::triggered, this, &MainWindow::on_close);
+    QObject::connect(close, &QAction::triggered, this, &QMainWindow::close);
     QObject::connect(connect, &QAction::triggered, this, &MainWindow::on_connect);
     QObject::connect(disconnect, &QAction::triggered, this, &MainWindow::on_disconnect);
     QObject::connect(comp_s, &QAction::triggered, this, &MainWindow::m_on_compile_show);
@@ -95,12 +118,71 @@ void MainWindow::connet_slots()
     //QObject::connect(a_dialog, &Alert_Dialog::alert_confirm_clicked, this, &MainWindow::close_alert_dialog);
 }
 
+void MainWindow::bind_shortcut()
+{
+    QShortcut *sc1 = new QShortcut(QKeySequence("Ctrl+S"), this);
+    sc1->setContext(Qt::ApplicationShortcut);
+    QObject::connect(sc1, &QShortcut::activated, this, &MainWindow::on_save);
+    QShortcut *sc2 = new QShortcut(QKeySequence("Ctrl+Q"), this);
+    sc1->setContext(Qt::ApplicationShortcut);
+    QObject::connect(sc2, &QShortcut::activated, this, &MainWindow::processing_bef_window_closed);
+    QObject::connect(sc2, &QShortcut::activated, this, &MainWindow::on_close);
+    QObject::connect(sc2, &QShortcut::activated, this, &QMainWindow::close);
+}
+
 void MainWindow::on_open()
 {
-    std::cout << "on open clicked" << std::endl;
+    QString file_name = QFileDialog::getOpenFileName(this, tr("open file"),
+                                                   "./", tr("All files (*.*)"));
+    if (!file_name.isNull()) {
+        this->selected_file = file_name;
+        QFile opened_file(file_name);
+        if (!opened_file.open(QFile::ReadOnly|QFile::Text)) {
+            QMessageBox::warning(this,tr("Error") , tr("open file failed"));
+        } else {
+            QTextStream in(&opened_file);
+            m_editor->setText(QString(in.readAll()));
+        }
+        opened_file.close();
+    }
+    //std::cout << open_file.fileName().toStdString() << std::endl;
 }
-void MainWindow::on_close(){}
-void MainWindow::on_save(){}
+void MainWindow::on_close()
+{
+    this->selected_file = "";
+}
+void MainWindow::on_save()
+{
+    if (this->selected_file == "") {
+        // not an opened file
+        QString file_name = QFileDialog::getSaveFileName(this, tr("save file"), "./");
+        if (!file_name.isNull()) {
+            this->selected_file = file_name;
+            QFile save_file(file_name);
+            if (!save_file.open(QFile::ReadWrite|QFile::Text)) {
+                QMessageBox::warning(this,tr("Error") , tr("save file failed"));
+            } else {
+                QTextStream out(&save_file);
+                QString output_text = m_editor->text();
+                out << output_text;
+                out.flush();
+            }
+            save_file.close();
+        }
+    } else {
+        // an opened file
+        QFile save_file(this->selected_file);
+        if (!save_file.open(QFile::ReadWrite|QFile::Text)) {
+            QMessageBox::warning(this,tr("Error") , tr("save file failed"));
+        } else {
+            QTextStream out(&save_file);
+            QString output_text = m_editor->text();
+            out << output_text;
+            out.flush();
+        }
+        save_file.close();
+    }
+}
 void MainWindow::on_connect()
 {
     this->dialog->show();
@@ -108,6 +190,9 @@ void MainWindow::on_connect()
 void MainWindow::on_disconnect()
 {
     if (conn_stat) { // judge the existence of connection
+        QMessageBox msgBox;
+        msgBox.setText(tr("disconnnected from server"));
+        msgBox.exec();
         std::cout << "disconnect from server" << std::endl;
         this->s_thread->close_connection();
         this->m_thread->quit();
@@ -169,4 +254,46 @@ void MainWindow::processing_bef_window_closed()
         this->m_thread->wait();
         sub_thread_running = 0;
     }
+}
+
+QString tell_diff(QString &bef_line, QString &aft_line)
+{
+    int len = bef_line.length();
+    std::string bef = bef_line.toStdString();
+    std::string aft = aft_line.toStdString();
+    char val[200];
+    int index = 0, a = 0;
+    for (int b = 0;b < len;b++) {
+        if (bef[b] == aft[a]) {
+            a++;
+        } else {
+            val[index] = bef[b];
+            index++;
+        }
+    }
+    val[index] = 0;
+    return QString(val);
+}
+
+void MainWindow::cursor_position_process(int l, int r)
+{
+    QString aft_text = m_editor->text();
+    if (bef_text == aft_text) { // only change the position of the cursor
+        //std::cout << "only move cursor, selected text:" << m_editor->selectedText().toStdString() << std::endl;
+    } else {
+        int bef = m_editor->positionFromLineIndex(cursor_line, cursor_index);
+        int aft = m_editor->positionFromLineIndex(l, r);
+        std::cout << "  bef:" << bef << "  aft:" << aft << std::endl;
+        if (bef < aft) { // add char
+            QString text = m_editor->text(bef, aft); // the added string
+            //std::cout << "  add:" << text.toStdString() << std::endl;
+        } else { // delete char
+            QString text = tell_diff(bef_text, aft_text);
+            //std::cout << "  mdel:" << text.toStdString() << std::endl;
+        }
+    }
+    this->cursor_line = l;
+    this->cursor_index = r;
+    this->bef_text = this->m_editor->text();
+    return; // change the cursor position and return
 }

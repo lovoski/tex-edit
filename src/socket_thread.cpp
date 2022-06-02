@@ -21,6 +21,12 @@ extern "C"
 #include <errno.h>
 #include <arpa/inet.h>
 
+#define PORT_NUMBER 5001
+#define MBUF_SIZE   1024
+#define HOST_IP     "127.0.0.1"
+#define SEP_SYB     222
+
+/* hadling the connecting event */
 void SocketThread::connect_to_server()
 {
     if (!this->connected) {
@@ -31,9 +37,9 @@ void SocketThread::connect_to_server()
                   << std::endl;
 
         int sockfd = 0, n = 0;
-        char recvBuff[1024];
+        char recv_buf[MBUF_SIZE], send_buf[MBUF_SIZE];
         struct sockaddr_in serv_addr;
-        memset(recvBuff, '0', sizeof(recvBuff));
+        memset(recv_buf, '0', sizeof(recv_buf));
 
         /* a socket is created through call to socket() function */
         if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -71,10 +77,10 @@ void SocketThread::connect_to_server()
          * on clients socket through clients socket descriptor and client can read it
          * through normal read call on the its socket descriptor.
          */
-        while ((n = read(sockfd, recvBuff, sizeof(recvBuff) - 1)) > 0)
+        while ((n = read(sockfd, recv_buf, sizeof(recv_buf) - 1)) > 0)
         {
-            recvBuff[n] = 0;
-            if (fputs(recvBuff, stdout) == EOF)
+            recv_buf[n] = 0;
+            if (fputs(recv_buf, stdout) == EOF)
             {
                 printf("\n Error : Fputs error\n");
             }

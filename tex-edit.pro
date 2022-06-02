@@ -9,7 +9,6 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    src/alert_dialog.cpp \
     src/conn_dialog.cpp \
     src/main.cpp \
     src/main_window.cpp \
@@ -21,8 +20,7 @@ HEADERS += \
     3rdparty/unix/include/qt5/* \
     include/main_window.h \
     include/socket_thread.h \
-    include/conn_dialog.h \
-    include/alert_dialog.h
+    include/conn_dialog.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

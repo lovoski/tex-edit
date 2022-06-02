@@ -32,6 +32,7 @@ void SocketThread::start_listening_thread()
     memset(recv_buf, 0, sizeof(recv_buf));
     int rc = 0;
     while (this->connected) { // wait and listen message from server
+        // the sockfd is nonblocking
         rc = ::recv(this->sockfd, recv_buf, sizeof(recv_buf), 0);
         if (rc <= 0) {
             std::cout << "socket closed or error" << std::endl;

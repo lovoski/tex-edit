@@ -57,7 +57,8 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
     if (!this->connected) {
         int sockfd = 0;
         struct sockaddr_in serv_addr;
-        if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        // set socket to be non-blocking
+        if ((sockfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) < 0) {
             printf("\n Error : Could not create socket \n");
             return;
         }
@@ -70,10 +71,12 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
             printf("\n inet_pton error occured\n");
             return;
         }
-        if (::connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-            printf("\n Error : Connect Failed \n");
-            return;
+        int connect_times = 0;
+        while (::connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+            connect_times++;
+            if (connect_times > 5) break;
         }
+        printf("connected to server\n");
         char tmp_send[1024];
         tmp_send[0] = 'm';
         ::write(this->sockfd, tmp_send, 1024); // first contact
@@ -95,6 +98,7 @@ MainWindow::MainWindow(QWidget *parent)
     this->sig_col = new SignalCollection;
     this->s_thread = new SocketThread;
     this->dialog = new Conn_Dialog;
+    this->o_dialog = new openfile_dialog;
     //this->a_dialog = new Alert_Dialog;
     this->s_thread->moveToThread(this->m_thread);
 
@@ -112,6 +116,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_m4 = m_mB->addMenu(tr("Help"));
 
     open = new QAction(tr("open"), this);
+    o_remote = new QAction(tr("open remote"), this);
     save = new QAction(tr("save"), this);
     close = new QAction(tr("close"), this);
     connect = new QAction(tr("connect"), this);
@@ -124,6 +129,7 @@ MainWindow::MainWindow(QWidget *parent)
     connet_slots();
 
     m_m1->addAction(open);
+    m_m1->addAction(o_remote);
     m_m1->addAction(save);
     m_m1->addAction(close);
     m_m2->addAction(connect);
@@ -144,6 +150,7 @@ MainWindow::~MainWindow()
     delete sig_col;
     delete s_thread;
     delete m_thread;
+    delete o_dialog;
     delete m_mB;
     delete m_m1;
     delete m_m2;
@@ -151,6 +158,7 @@ MainWindow::~MainWindow()
     delete m_m4;
     delete m_editor;
     delete open;
+    delete o_remote;
     delete save;
     delete close;
     delete connect;
@@ -187,6 +195,7 @@ void MainWindow::connet_slots()
     QObject::connect(sig_col, &SignalCollection::finish_sock_thread, this, &MainWindow::close_connection);
 
     QObject::connect(open, &QAction::triggered, this, &MainWindow::on_open);
+    QObject::connect(o_remote, &QAction::triggered, this, &MainWindow::on_open_remote);
     QObject::connect(save, &QAction::triggered, this, &MainWindow::on_save);
     QObject::connect(close, &QAction::triggered, this, &MainWindow::on_close);
     QObject::connect(close, &QAction::triggered, this, &QMainWindow::close);
@@ -204,6 +213,9 @@ void MainWindow::connet_slots()
     // send message to server when action is detected
     QObject::connect(this, &MainWindow::send_msg_to_server_request, this, &MainWindow::send_msg_to_server);
     //QObject::connect(a_dialog, &Alert_Dialog::alert_confirm_clicked, this, &MainWindow::close_alert_dialog);
+
+    QObject::connect(o_dialog, &openfile_dialog::confirm_btn_clicked_signal, this, &MainWindow::process_openfile_dialog_confirm);
+    QObject::connect(o_dialog, &openfile_dialog::cancel_btn_clicked_signal, this, &MainWindow::process_openfile_dialog_cancel);
 }
 
 void MainWindow::bind_shortcut()
@@ -216,6 +228,28 @@ void MainWindow::bind_shortcut()
     QObject::connect(sc2, &QShortcut::activated, this, &MainWindow::processing_bef_window_closed);
     QObject::connect(sc2, &QShortcut::activated, this, &MainWindow::on_close);
     QObject::connect(sc2, &QShortcut::activated, this, &QMainWindow::close);
+}
+
+void MainWindow::process_openfile_dialog_confirm(QString &file_name)
+{
+    QString tmp_file_name = file_name;
+    if (tmp_file_name != "" && !tmp_file_name.isNull()) {
+        // send_message_to_server_main_thread();
+    }
+}
+
+void MainWindow::process_openfile_dialog_cancel()
+{
+    this->o_dialog->hide();
+}
+
+void MainWindow::on_open_remote()
+{
+    if (!this->connected) {
+        QMessageBox::warning(this,tr("Error") , tr("connect to server first"));
+    } else {
+        // send_message_to_server_main_thread();
+    }
 }
 
 void MainWindow::on_open()
@@ -278,9 +312,7 @@ void MainWindow::on_connect()
 void MainWindow::on_disconnect()
 {
     if (this->connected) { // judge the existence of connection
-        QMessageBox msgBox;
-        msgBox.setText(tr("disconnnected from server"));
-        msgBox.exec();
+        QMessageBox::information(this, tr("information"), tr("disconnecting from server"));
         std::cout << "disconnect from server" << std::endl;
         this->close_connection();
         this->s_thread->connected = false; // kill the dead loop

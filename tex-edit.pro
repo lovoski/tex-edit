@@ -12,6 +12,7 @@ SOURCES += \
     src/conn_dialog.cpp \
     src/main.cpp \
     src/main_window.cpp \
+    src/openfile_dialog.cpp \
     src/socket_thread.cpp
 
 HEADERS += \
@@ -20,7 +21,8 @@ HEADERS += \
     3rdparty/unix/include/qt5/* \
     include/main_window.h \
     include/socket_thread.h \
-    include/conn_dialog.h
+    include/conn_dialog.h \
+    include/openfile_dialog.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -49,5 +51,5 @@ INCLUDEPATH += $$PWD/3rdparty/unix
 DEPENDPATH += $$PWD/3rdparty/unix
 
 FORMS += \
-    ui/alert_dialog.ui \
+    ui/openfile_dialog.ui \
     ui/conn_dialog.ui

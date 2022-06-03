@@ -44,32 +44,43 @@ void *recv_client_task(void *args)
     int index = ((fd_s *)args)->index;
     char recv_buf[MBUF_SIZE];
     memset(recv_buf, 0, MBUF_SIZE);
+    printf("newly connected client fd=%d, index=%d\n", fd, index);
     while (1) {
         rc = read(fd, recv_buf, sizeof(recv_buf)); // blocking io
-        printf("looping rc=%d\n", rc);
         if (rc <= 0) { // error or client closed
-            printf("close socket due to error or shutdown client");
-            client_fd[index] = 0; // remove client from list
-            client_count--;
-            close(fd);
-            break;
+            if (rc == 0) {
+                printf("closed socket\n");
+                client_fd[index] = 0; // remove client from list
+                client_count--;
+                close(fd);
+                break;
+            } // error
         } else {
-            printf("%s\n", recv_buf);
             if ((recv_buf[0] == 'm') && (recv_buf[1] == SEP_SYB)) { // is the message head
                 if (recv_buf[2] == 'a' || recv_buf[2] == 'd') { // add char or delete char
                     char cont_len[100];
+                    char send_buf[MBUF_SIZE];
+                    memcpy(send_buf, recv_buf, MBUF_SIZE);
+                    // printf("0:recv_buf=%s\n", recv_buf);
                     for (int i = 4;i < MBUF_SIZE;++i) {
-                        if (recv_buf[i] != SEP_SYB) cont_len[i - 4] = recv_buf[i];
+                        if (recv_buf[i] != SEP_SYB) {
+                            cont_len[i - 4] = recv_buf[i];
+                        }
                         cont_len[i - 3] = 0;
                     }
+                    // printf("1:recv_buf=%s\n", recv_buf);
                     int cont_len_num = atoi(cont_len);
+                    printf("content length :%d\n", cont_len_num);
                     if (cont_len_num < 1000) {
                         int c_count = 1;
+                        // printf("2:recv_buf=%s\n", recv_buf);
                         for (int i = 0;i < M_CLIENT;++i) {
                             if (c_count == client_count) break;
                             if (i == index) continue;
                             if (client_fd[i]) {
-                                write(client_fd[i], recv_buf, sizeof(recv_buf));
+                                int t_s = write(client_fd[i], send_buf, sizeof(send_buf));
+                                printf("client fd=%d, client index=%d, send_buf=%s\n", client_fd[i], i, send_buf);
+                                if (t_s == -1) printf("error writting to other clients\n");
                                 c_count++;
                             }
                         }
@@ -83,8 +94,14 @@ void *recv_client_task(void *args)
                     close(fd);
                     break;
                 } else {
-                    printf("undefined message format");
+                    printf("1:undefined message format\n");
                 }
+            } else {
+                printf("2:undefined message format\n");
+                client_fd[index] = 0; // remove client from list
+                client_count--;
+                close(fd);
+                break;
             }
             
         }
@@ -103,43 +120,37 @@ int main(int argc, char *argv[])
     int listenfd = 0, connfd;
     struct sockaddr_in serv_addr;
 
-    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    listenfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     memset(&serv_addr, '0', sizeof(serv_addr));
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(PORT_NUMBER);
-
     bind(listenfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 
     for (int i = 0;i < M_CLIENT;++i) { // join all the threads
         pthread_join(threads[i], NULL);
     }
 
-    listen(listenfd, 10);
+    listen(listenfd, 50);
+    int loop_count = 0;
     while (1) { // start the thread forever
-        printf("wait for connection\n");
+        // printf("wait for connection\n");
         connfd = accept(listenfd, (struct sockaddr *)NULL, NULL);
-        printf("after connection\n");
-        client_count++;
-        // process the first recv
-        char recv_buf[MBUF_SIZE];
-        memset(recv_buf, 0, MBUF_SIZE);
-        int n = recv(connfd, recv_buf, MBUF_SIZE, 0);
-        if (n == -1) {
-            printf("fail to read\n");
+        if (connfd == -1) { // error
+            sleep(2);
+            printf("wait=%d, errno=%d\n", loop_count, errno);
+            loop_count++;
         } else {
-            printf("%s\n", recv_buf);
+            printf("after connection\n");
+            client_count++;
             int f_non_zero = 0;
             while (client_fd[f_non_zero]) f_non_zero++; // find the first zero-free position
-            if (recv_buf[0] == 'm') { // client
-                client_fd[f_non_zero] = connfd;
-                fd_s fd_s_t = {connfd, f_non_zero};
-                pthread_create(&threads[f_non_zero], NULL, recv_client_task, (void *)(&fd_s_t));
-            } else {
-                printf("not a valid client connection\n");
-            }
+            client_fd[f_non_zero] = connfd; // start task regardless of type
+            fd_s fd_s_t = {connfd, f_non_zero};
+            pthread_create(&threads[f_non_zero], NULL, recv_client_task, (void *)(&fd_s_t));
         }
+        
     }
     close(listenfd);
     return 0;

@@ -36,8 +36,6 @@ void MainWindow::send_msg_to_server(QString msg)
             if (n == -1) printf("mainwindow send error\n");
         }
         // ::write(this->sockfd, );
-    } else {
-        printf("mainwindow connected false\n");
     }
 }
 
@@ -72,26 +70,29 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
             return;
         }
         int connect_times = 0;
-        while (::connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        int rc = 0;
+        while ((rc = ::connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) < 0) {
             connect_times++;
-            if (connect_times > 5) break;
+            if (connect_times > 20) break;
         }
-        printf("connected to server\n");
-        char tmp_send[1024];
-        tmp_send[0] = 'm';
-        ::write(this->sockfd, tmp_send, 1024); // first contact
-        this->connected = 1; // only by this far can the conection be secured to be valid
-        
-        /* tell the sub-thread what the file descipter is, setup dead loop */
-        this->s_thread->sockfd = this->sockfd;
-        this->s_thread->connected = true;
-        this->sig_col->emit_start_recv_signal_alone(); // tell the recv thread start working
+        if (rc < 0) {
+            printf("failed after 20 attempts\n");
+        } else { // rc=0 stands for success
+            printf("connected to server, sockfd=%d\n", this->sockfd);
+            this->connected = 1; // only by this far can the conection be secured to be valid
+
+            /* tell the sub-thread what the file descipter is, setup dead loop */
+            this->s_thread->sockfd = this->sockfd;
+            this->s_thread->connected = true;
+            this->sig_col->emit_start_recv_signal_alone(); // tell the recv thread start working
+        }
     }
 }
 }
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    this->main_tab = new QTabWidget(this);
     this->m_mB = new QMenuBar(this);
     this->m_editor = new QsciScintilla(this);
     this->m_thread = new QThread;
@@ -102,7 +103,7 @@ MainWindow::MainWindow(QWidget *parent)
     //this->a_dialog = new Alert_Dialog;
     this->s_thread->moveToThread(this->m_thread);
 
-    setup_editor();
+    setup_editor(this->m_editor);
     bind_shortcut();
 
     this->resize(600, 500);
@@ -117,6 +118,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     open = new QAction(tr("open"), this);
     o_remote = new QAction(tr("open remote"), this);
+    add_tab = new QAction(tr("new tab"), this);
     save = new QAction(tr("save"), this);
     close = new QAction(tr("close"), this);
     connect = new QAction(tr("connect"), this);
@@ -128,6 +130,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     connet_slots();
 
+    m_m1->addAction(add_tab);
     m_m1->addAction(open);
     m_m1->addAction(o_remote);
     m_m1->addAction(save);
@@ -140,12 +143,17 @@ MainWindow::MainWindow(QWidget *parent)
     m_m4->addAction(about);
 
     this->setMenuBar(m_mB);
-    this->setCentralWidget(m_editor);
+    this->setCentralWidget(main_tab);
+    main_tab->addTab(m_editor, "editor");
+
+    //this->setCentralWidget(m_editor);
 }
 
 MainWindow::~MainWindow()
 {
     //delete a_dialog;
+    delete add_tab;
+    delete main_tab;
     delete dialog;
     delete sig_col;
     delete s_thread;
@@ -169,19 +177,19 @@ MainWindow::~MainWindow()
     delete comp_o;
 }
 
-void MainWindow::setup_editor()
+void MainWindow::setup_editor(QsciScintilla *editor)
 {
     //QsciLexerCPP *textLexer = new QsciLexerCPP;
     //m_editor->setLexer(textLexer);
-    m_editor->setCaretForegroundColor(QColor(250,0,0));
+    editor->setCaretForegroundColor(QColor(250,0,0));
     //m_editor->setCaretWidth(5);
     QFont dest_font;
     dest_font.setPointSize(13);
-    m_editor->setFont(dest_font);
-    m_editor->setCaretLineVisible(true);
-    m_editor->setCaretLineBackgroundColor(QColor(200,200,200));
-    m_editor->setMarginType(0, QsciScintilla::NumberMargin);
-    m_editor->setMarginWidth(0, 30);
+    editor->setFont(dest_font);
+    editor->setCaretLineVisible(true);
+    editor->setCaretLineBackgroundColor(QColor(200,200,200));
+    editor->setMarginType(0, QsciScintilla::NumberMargin);
+    editor->setMarginWidth(0, 30);
 
     QObject::connect(m_editor, &QsciScintilla::cursorPositionChanged, this, &MainWindow::cursor_position_process);
 }
@@ -195,7 +203,8 @@ void MainWindow::connet_slots()
     QObject::connect(sig_col, &SignalCollection::finish_sock_thread, this, &MainWindow::close_connection);
 
     QObject::connect(open, &QAction::triggered, this, &MainWindow::on_open);
-    QObject::connect(o_remote, &QAction::triggered, this, &MainWindow::on_open_remote);
+    QObject::connect(add_tab, &QAction::triggered, this, &MainWindow::on_add_new_tab);
+    QObject::connect(o_remote, &QAction::triggered, this, &MainWindow::on_open_remote_local);
     QObject::connect(save, &QAction::triggered, this, &MainWindow::on_save);
     QObject::connect(close, &QAction::triggered, this, &MainWindow::on_close);
     QObject::connect(close, &QAction::triggered, this, &QMainWindow::close);
@@ -243,7 +252,13 @@ void MainWindow::process_openfile_dialog_cancel()
     this->o_dialog->hide();
 }
 
-void MainWindow::on_open_remote()
+void MainWindow::on_add_new_tab()
+{
+    QsciScintilla *tmp = new QsciScintilla;
+    main_tab->addTab(tmp, "new");
+}
+
+void MainWindow::on_open_remote_local()
 {
     if (!this->connected) {
         QMessageBox::warning(this,tr("Error") , tr("connect to server first"));
@@ -313,7 +328,7 @@ void MainWindow::on_disconnect()
 {
     if (this->connected) { // judge the existence of connection
         QMessageBox::information(this, tr("information"), tr("disconnecting from server"));
-        std::cout << "disconnect from server" << std::endl;
+        printf("on disconnected, s_thread->connected=%d\n", s_thread->connected);
         this->close_connection();
         this->s_thread->connected = false; // kill the dead loop
         this->m_thread->quit();
@@ -442,13 +457,19 @@ void MainWindow::cursor_position_process(int l, int r)
     } else {
         int bef = m_editor->positionFromLineIndex(cursor_line, cursor_index);
         int aft = m_editor->positionFromLineIndex(l, r);
-        std::cout << "  bef:" << bef << "  aft:" << aft << std::endl;
+        /* construct the position of current and before cursor position */
+        QString tail_b = QString('\1') + QString::number(cursor_line, 10) + QString('\1') + QString::number(cursor_index, 10);
+        QString tail_a = QString('\1') + QString::number(l, 10) + QString('\1') + QString::number(r, 10);
+        QString tail = tail_b + tail_a;
+        // std::cout << "  bef:" << bef << "  aft:" << aft << std::endl;
         if (bef < aft) { // add char
             QString text = m_editor->text(bef, aft); // the added string
+            text = text + tail;
             send_message_to_server_main_thread(text, 'a');
             //std::cout << "  add:" << text.toStdString() << std::endl;
         } else { // delete char
             QString text = tell_diff(bef_text, aft_text);
+            text = text + tail;
             send_message_to_server_main_thread(text, 'd');
             //std::cout << "  mdel:" << text.toStdString() << std::endl;
         }

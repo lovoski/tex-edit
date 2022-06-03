@@ -11,6 +11,7 @@
 #include <QFont>
 #include <QShortcut>
 #include <QFileDialog>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QThread>
 #include <QChar>
@@ -47,7 +48,7 @@ public:
     void connect_to_server();
 
 private:
-    void setup_editor();
+    void setup_editor(QsciScintilla *editor);
     void bind_shortcut();
 signals:
     //void give_alert_msg(QString &msg);
@@ -56,7 +57,8 @@ signals:
 
 public slots:
     void on_open();
-    void on_open_remote();
+    void on_open_remote_local();
+    void on_add_new_tab();
     void on_save();
     void on_close();
     void on_connect();
@@ -106,9 +108,12 @@ private:
     SocketThread *s_thread;
     QThread *m_thread;
 
+    QTabWidget *main_tab;
+
     QMenuBar *m_mB;
     QMenu *m_m1;
     QAction *open;
+    QAction *add_tab;
     QAction *o_remote;
     QAction *save;
     QAction *close;

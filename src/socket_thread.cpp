@@ -30,19 +30,32 @@ void SocketThread::start_listening_thread()
     std::cout << "start listen from thread" << std::endl;
     char recv_buf[MBUF_SIZE];
     memset(recv_buf, 0, sizeof(recv_buf));
-    int rc = 0;
+    ::setbuf(stdout, NULL);
+    int rc = 0, wait_count = 0;
     while (this->connected) { // wait and listen message from server
         // the sockfd is nonblocking
-        rc = ::recv(this->sockfd, recv_buf, sizeof(recv_buf), 0);
+        rc = ::read(this->sockfd, recv_buf, sizeof(recv_buf));
         if (rc <= 0) {
-            std::cout << "socket closed or error" << std::endl;
-            break; // when the connection is dead
-        } else {
-            std::cout << recv_buf << std::endl;
+            if (rc == 0) {
+                printf("break loop due to killed connection\n");
+                break; // this means the connection is not available
+            }
+            ::usleep(500000); // sleep for 0.5s
+            printf("wait=%d, rc=%d, errno=%d\n",wait_count, rc, errno);
+            wait_count++;
+            // break; // when the connection is dead // this is non-blocking soccket, no need for break
+        } else { // process the received message
+            // the message only comes in two types, 'a' and 'd'
+            if (recv_buf[2] == 'a') { // add string
+
+            } else if(recv_buf[2] == 'd') { // delete string
+
+            }
         }
     }
     std::cout << "kill dead loop, finished receiving info" << std::endl;
 }
+
 }
 
 void SignalCollection::emit_start_sig()

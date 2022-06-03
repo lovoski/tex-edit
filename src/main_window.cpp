@@ -270,35 +270,69 @@ void MainWindow::process_text_changed()
     if (currrent_text != bef_text) {
         QStringList cur_line_seg = currrent_text.split('\n');
         QStringList bef_line_seg = bef_text.split('\n');
-        QString changed_lines = "";
+        QString changed_lines = "", concate;
         int a_ln = cur_line_seg.length();
         int b_ln = bef_line_seg.length();
-        /* if (a_ln>=2) {
-            std::cout << "bef" << std::endl;
-            std::cout << a_ln-1 << " " << a_ln-2 << std::endl;
-            if ((cur_line_seg[a_ln-1]=="")&&(cur_line_seg[a_ln-2]=="")) a_ln--; // avoid multiple \n
-            std::cout << "aft" << std::endl;
-        } */
-        printf("current line:%d, before line:%d\n", a_ln, b_ln);
-        int max_l = a_ln > b_ln ? a_ln : b_ln;
-        int min_l = a_ln < b_ln ? a_ln : b_ln;
-
-        int start = 0, end = 0;
-        while (start < min_l && bef_line_seg[start] == cur_line_seg[start]) start++;
-        while (bef_line_seg[b_ln-1-end] == cur_line_seg[a_ln-1-end]) end++;
-        end = b_ln - end - 1;
-        printf("start=%d, end=%d\n", start, end);
-
-        for (int i = start;i <= end;++i) {
-            changed_lines.append(cur_line_seg[i]);
-            if (i < end) changed_lines.append('\n');
+        if (a_ln == b_ln) { // modify, many lines can be changed, but the stays the same
+            char head[4] = {'m', '\1', 'm', '\1'};
+            int start = 0, end = a_ln-1;
+            while (cur_line_seg[start] == bef_line_seg[start])
+                start++; // index of the first changed line
+            while (cur_line_seg[end] == bef_line_seg[end])
+                end--; // index of the last changed line
+            for (int i = start;i <= end;++i) {
+                changed_lines = changed_lines.append(cur_line_seg[i]).append('\n');
+            } // even the lines are '\n' themselves, '\n' is still needed
+            QString len = QString::number(changed_lines.length()) + QString('\1');
+            QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+            concate = QString(head) + pos_signature + len + changed_lines;
+        } else if (a_ln > b_ln) { // add, find the added new and changed line
+            char head[4] = {'m', '\1', 'a', '\1'};
+            int start = 0, end = 0;
+            while (start < b_ln-1 && (cur_line_seg[start] == bef_line_seg[start]))
+                start++; // index of the first changed line
+            while ((b_ln-1-end) > 0 && (cur_line_seg[a_ln-1-end] == bef_line_seg[b_ln-1-end]))
+                end++; // index of the last changed line
+            /* rule-1: stop when next is not available */
+            int m_end = a_ln-1-end;
+            if (start < m_end) { // replace
+                for (int i = 0;i <= end;++i) {
+                    changed_lines.append(cur_line_seg[i]).append('\n');
+                }
+                QString len = QString::number(changed_lines.length()) + QString('\1');
+                QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+                concate = QString(head) + pos_signature + len + changed_lines;
+            } else if (start == m_end) { // insert
+                changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
+                QString len = QString::number(changed_lines.length()) + QString('\1');
+                QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+                concate = QString(head) + pos_signature + len + changed_lines;
+            } else if (start > m_end) { // complex, no need for changed_lines
+                QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+                concate = QString(head) + pos_signature + changed_lines;
+            }
+        } else if (a_ln < b_ln) { //delete, find the deleted and changed line
+            char head[4] = {'m', '\1', 'd', '\1'};
+            int start = 0, end = 0;
+            while (start < a_ln-1 && (cur_line_seg[start] == bef_line_seg[start]))
+                start++;
+            while ((a_ln-1-end) > 0 && (cur_line_seg[a_ln-1-end] == bef_line_seg[b_ln-1-end]))
+                end++;
+            int m_end = b_ln-1-end;
+            if (start > m_end) { // complex, no need for changed_lines
+                QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+                concate = QString(head) + pos_signature + changed_lines;
+            } else if(start == m_end) { // remove one line indexed start|end
+                changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
+                QString len = QString::number(changed_lines.length()) + QString('\1');
+                QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+                concate = QString(head) + pos_signature + len + changed_lines;
+            } else if (start < m_end) { // remove from start ot end, insert the line at start
+                QString len = QString::number(changed_lines.length()) + QString('\1');
+                QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
+                concate = QString(head) + pos_signature + len + changed_lines;
+            } // keep in mind that end and start starts at 0, so the real value should -2
         }
-        char head[4] = {'m', '\1', 'm', '\1'};
-        QString len = QString::number(changed_lines.length());
-        // change send message to m 1 m 1 len 1 start 1 end 1 l1 \n l2 \n ...
-        QString concate = QString(head) + len + QString('\1') + QString::number(start) + QString('\1') + QString::number(end) + QString('\1') + changed_lines;
-        std::cout << "before sending:" << concate.toStdString() << std::endl;
-
         emit send_msg_to_server_request(concate); // emit signal with modifiyed msg
         bef_text = m_editor->text(); // update before text
     } // if no change happened
@@ -307,23 +341,23 @@ void MainWindow::process_text_changed()
 
 void MainWindow::process_recv_modified_string_msg(QString msg)
 {
-    std::cout << msg.toStdString() << std::endl;
+    std::cout << msg.toStdString() << std::endl; // the complex method
     QStringList list = msg.split('\1');
-    int start = list[3].toInt();
-    int end = list[4].toInt();
-    QString current_text = m_editor->text();
-    QStringList cur_list = current_text.split('\n');
-    QString changed = "";
-    for (int i = 0;i < start;++i) {
-        changed.append(cur_list[i]).append('\n');
+    int start = list[2].toInt();
+    int end = list[3].toInt();
+
+    std::cout << "start=" << start << ", end=" << end << std::endl;
+
+    if (list[1] == QString('m')) {
+        std::cout << "mod" << std::endl;
+    } else if (list[1] == QString('a')) {
+        std::cout << "add" << std::endl;
+    } else if (list[1] == QString('d')) {
+        std::cout << "del" << std::endl;
     }
-    changed.append(list[5]);
-    for (int i = end + 1;i < cur_list.length();++i) {
-        changed.append(cur_list[i]);
-        if (i < cur_list.length()-1) changed.append('\n');
-    }
-    m_editor->setText(changed);
-    bef_text = m_editor->text();
+
+    /* m_editor->setText(changed);
+    bef_text = m_editor->text(); */
 }
 
 void __sep_length(const char *recv_buf, const int len)

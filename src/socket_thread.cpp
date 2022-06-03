@@ -41,11 +41,11 @@ void SocketThread::start_listening_thread()
                 break; // this means the connection is not available
             }
             ::usleep(500000); // sleep for 0.5s
-            printf("wait=%d, rc=%d, errno=%d\n",wait_count, rc, errno);
+            //printf("wait=%d, rc=%d, errno=%d\n",wait_count, rc, errno);
             wait_count++;
             // break; // when the connection is dead // this is non-blocking soccket, no need for break
         } else { // process the received message
-            if (recv_buf[2] == 'm') { // modify string
+            if (recv_buf[2] == 'm' || recv_buf[2] == 'a' || recv_buf[2] == 'd') { // modify string
                 QString tmp(recv_buf);
                 emit recv_modified_string_msg(tmp);
             } else {

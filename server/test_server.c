@@ -28,9 +28,11 @@ static int client_count = 0;
 // store all the threads
 static pthread_t threads[M_CLIENT];
 
+static MYSQL *sql;
+
 void *recv_client_task(void *args);
 void start_tex_processs(char *content, char *name);
-void operate_open(/* char *content, char *name */);
+void operate_open(char *msg, int len);
 void operate_compile();
 
 /* receive message from client and send the message to 
@@ -57,7 +59,7 @@ void *recv_client_task(void *args)
             } // error
         } else {
             if ((recv_buf[0] == 'm') && (recv_buf[1] == SEP_SYB)) { // is the message head
-                if (recv_buf[2] == 'm') { // add char or delete char
+                if (recv_buf[2] == 'm' || recv_buf[2] == 'a' || recv_buf[2] == 'd') { // add char or delete char
                     char cont_len[100];
                     char send_buf[MBUF_SIZE];
                     memcpy(send_buf, recv_buf, MBUF_SIZE);
@@ -88,7 +90,7 @@ void *recv_client_task(void *args)
                 } else if (recv_buf[2] == 'c') { // compile file
                     // operate_compile();
                 } else if (recv_buf[2] == 'o') { // open file
-                    // operate_open();
+                    operate_open(recv_buf, MBUF_SIZE);
                 } else if (recv_buf[2] == 'q') { // force quit
                     printf("quit as client socket required\n");
                     close(fd);
@@ -109,6 +111,16 @@ void *recv_client_task(void *args)
     return NULL;
 }
 
+void operate_open(char *msg, int len)
+{
+    int sep_c = 0;
+    char file_name[100];
+    memset(file_name, 0, sizeof(file_name));
+    for (int i = 0;i < len;++i) {
+
+    }
+}
+
 void start_tex_processs(char *content, char *name)
 {
     return;
@@ -117,6 +129,9 @@ void start_tex_processs(char *content, char *name)
 int main(int argc, char *argv[])
 {
     setbuf(stdout, NULL); // make sure I know what I'm doing
+
+    //sql = initialize_mysql("localhost", "root", "123456", "tex_store");
+
     int listenfd = 0, connfd;
     struct sockaddr_in serv_addr;
 

@@ -68,6 +68,16 @@ void insert_fullop_into_mysql(MYSQL *sql, char *full_query_sentence)
     }
 }
 
+char *query_texfile_from_database(MYSQL *sql, char *file_name)
+{
+    int res = __query_for_texfile_name(sql, file_name);
+    if (res == 2) {
+
+    } else { // file do not exists
+
+    }
+}
+
 int __query_for_texfile_name(MYSQL *sql, char *file_name)
 {
     if (mysql_query(sql, "SELECT * FROM tex_file")) {

@@ -16,6 +16,9 @@ void insert_fullop_into_mysql(MYSQL *sql, char *full_query_sentence);
 /* update tex file into database */
 void insert_texfile_into_mysql(MYSQL *sql, char *file_name, char *text);
 
+/* get tex file as char* */
+char *query_texfile_from_database(MYSQL *sql, char *file_name);
+
 /* free the memory allocated */
 void free_wrapped_mysql(MYSQL *sql);
 

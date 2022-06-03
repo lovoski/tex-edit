@@ -45,11 +45,11 @@ void SocketThread::start_listening_thread()
             wait_count++;
             // break; // when the connection is dead // this is non-blocking soccket, no need for break
         } else { // process the received message
-            // the message only comes in two types, 'a' and 'd'
-            if (recv_buf[2] == 'a') { // add string
-
-            } else if(recv_buf[2] == 'd') { // delete string
-
+            if (recv_buf[2] == 'm') { // modify string
+                QString tmp(recv_buf);
+                emit recv_modified_string_msg(tmp);
+            } else {
+                printf("recv command undefined\n, recv_buf=%s\n", recv_buf);
             }
         }
     }

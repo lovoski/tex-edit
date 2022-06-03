@@ -15,10 +15,12 @@ signals:
     void start_sock_thread();
     void finish_sock_thread();
     void start_recv_thread_alone();
+    
 public slots:
     void emit_start_sig();
     void emit_finish_sig();
     void emit_start_recv_signal_alone();
+    
 };
 
 class SocketThread : public QObject
@@ -32,6 +34,11 @@ public:
 public:
     int sockfd = 0;
     bool connected = 0;
+
+signals:
+    void recv_add_string_msg(QString str);
+    void recv_delete_string_msg(QString str);
+    void recv_modified_string_msg(QString str);
 
 public slots:
     // setting up basic behavior of a socket

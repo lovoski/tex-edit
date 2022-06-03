@@ -77,6 +77,8 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
         }
         if (rc < 0) {
             printf("failed after 20 attempts\n");
+            this->m_thread->quit();
+            this->m_thread->wait();
         } else { // rc=0 stands for success
             printf("connected to server, sockfd=%d\n", this->sockfd);
             this->connected = 1; // only by this far can the conection be secured to be valid
@@ -92,6 +94,8 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    this->setFocusPolicy(Qt::StrongFocus);
+    QWidget::setFocusPolicy(Qt::StrongFocus);
     this->main_tab = new QTabWidget(this);
     this->m_mB = new QMenuBar(this);
     this->m_editor = new QsciScintilla(this);
@@ -191,7 +195,9 @@ void MainWindow::setup_editor(QsciScintilla *editor)
     editor->setMarginType(0, QsciScintilla::NumberMargin);
     editor->setMarginWidth(0, 30);
 
-    QObject::connect(m_editor, &QsciScintilla::cursorPositionChanged, this, &MainWindow::cursor_position_process);
+    // this needs to be abandoned due to severe problem
+    // QObject::connect(m_editor, &QsciScintilla::cursorPositionChanged, this, &MainWindow::cursor_position_process);
+    QObject::connect(this, &MainWindow::key_released_signal, this, &MainWindow::process_text_changed);
 }
 
 void MainWindow::connet_slots()
@@ -225,6 +231,11 @@ void MainWindow::connet_slots()
 
     QObject::connect(o_dialog, &openfile_dialog::confirm_btn_clicked_signal, this, &MainWindow::process_openfile_dialog_confirm);
     QObject::connect(o_dialog, &openfile_dialog::cancel_btn_clicked_signal, this, &MainWindow::process_openfile_dialog_cancel);
+
+    // tell the mainwindow class to process the received message from other clients
+    //QObject::connect(s_thread, &SocketThread::recv_add_string_msg, this, &MainWindow::process_recv_add_string_msg);
+    //QObject::connect(s_thread, &SocketThread::recv_delete_string_msg, this, &MainWindow::process_recv_delete_string_msg);
+    QObject::connect(s_thread, &SocketThread::recv_modified_string_msg, this, &MainWindow::process_recv_modified_string_msg);
 }
 
 void MainWindow::bind_shortcut()
@@ -237,6 +248,120 @@ void MainWindow::bind_shortcut()
     QObject::connect(sc2, &QShortcut::activated, this, &MainWindow::processing_bef_window_closed);
     QObject::connect(sc2, &QShortcut::activated, this, &MainWindow::on_close);
     QObject::connect(sc2, &QShortcut::activated, this, &QMainWindow::close);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    // std::cout << "key pressed" << std::endl;
+    emit key_pressed_signal();
+    QWidget::keyPressEvent(event);
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event)
+{
+    // std::cout << "key released" << std::endl;
+    emit key_released_signal();
+    QWidget::keyReleaseEvent(event);
+}
+
+void MainWindow::process_text_changed()
+{
+    QString currrent_text = m_editor->text();
+    if (currrent_text != bef_text) {
+        QStringList cur_line_seg = currrent_text.split('\n');
+        QStringList bef_line_seg = bef_text.split('\n');
+        QString changed_lines = "";
+        int a_ln = cur_line_seg.length();
+        int b_ln = bef_line_seg.length();
+        /* if (a_ln>=2) {
+            std::cout << "bef" << std::endl;
+            std::cout << a_ln-1 << " " << a_ln-2 << std::endl;
+            if ((cur_line_seg[a_ln-1]=="")&&(cur_line_seg[a_ln-2]=="")) a_ln--; // avoid multiple \n
+            std::cout << "aft" << std::endl;
+        } */
+        printf("current line:%d, before line:%d\n", a_ln, b_ln);
+        int max_l = a_ln > b_ln ? a_ln : b_ln;
+        int min_l = a_ln < b_ln ? a_ln : b_ln;
+
+        int start = 0, end = 0;
+        while (start < min_l && bef_line_seg[start] == cur_line_seg[start]) start++;
+        while (bef_line_seg[b_ln-1-end] == cur_line_seg[a_ln-1-end]) end++;
+        end = b_ln - end - 1;
+        printf("start=%d, end=%d\n", start, end);
+
+        for (int i = start;i <= end;++i) {
+            changed_lines.append(cur_line_seg[i]);
+            if (i < end) changed_lines.append('\n');
+        }
+        char head[4] = {'m', '\1', 'm', '\1'};
+        QString len = QString::number(changed_lines.length());
+        // change send message to m 1 m 1 len 1 start 1 end 1 l1 \n l2 \n ...
+        QString concate = QString(head) + len + QString('\1') + QString::number(start) + QString('\1') + QString::number(end) + QString('\1') + changed_lines;
+        std::cout << "before sending:" << concate.toStdString() << std::endl;
+
+        emit send_msg_to_server_request(concate); // emit signal with modifiyed msg
+        bef_text = m_editor->text(); // update before text
+    } // if no change happened
+    
+}
+
+void MainWindow::process_recv_modified_string_msg(QString msg)
+{
+    std::cout << msg.toStdString() << std::endl;
+    QStringList list = msg.split('\1');
+    int start = list[3].toInt();
+    int end = list[4].toInt();
+    QString current_text = m_editor->text();
+    QStringList cur_list = current_text.split('\n');
+    QString changed = "";
+    for (int i = 0;i < start;++i) {
+        changed.append(cur_list[i]).append('\n');
+    }
+    changed.append(list[5]);
+    for (int i = end + 1;i < cur_list.length();++i) {
+        changed.append(cur_list[i]);
+        if (i < cur_list.length()-1) changed.append('\n');
+    }
+    m_editor->setText(changed);
+    bef_text = m_editor->text();
+}
+
+void __sep_length(const char *recv_buf, const int len)
+{
+    char num[50], sep_c = 0, num_i = 0;
+    memset(num, 0, sizeof(num));
+    for (int i = 0;i < len;++i) {
+        if (recv_buf[i] == SEP_SYB) sep_c++;
+        if (sep_c == 2) {
+            num[num_i] = recv_buf[i];
+            num_i++;
+        } else if (sep_c > 2) break;
+    } // the num[] is the length of whole information
+}
+
+void MainWindow::process_recv_add_string_msg(QString str)
+{
+    QStringList list = str.split('\1');
+    QString content = list[3];
+    int o_l = list[4].toInt(), o_i = list[5].toInt();
+    // std::cout << "content:" << content.toStdString() << std::endl;
+    // std::cout << o_l << " " << o_i << " " << a_l << " " << a_i << std::endl;
+    m_editor->insertAt(content, o_l, o_i);
+    this->bef_text = m_editor->text(); // reset the text before to make sure nothing went wrong
+}
+
+void MainWindow::process_recv_delete_string_msg(QString str)
+{
+    QStringList list = str.split('\1');
+    int o_l = list[4].toInt(), o_i = list[5].toInt();
+    int a_l = list[6].toInt(), a_i = list[7].toInt();
+    int start = m_editor->positionFromLineIndex(o_l, o_i);
+    int end = m_editor->positionFromLineIndex(a_l, a_i);
+    QString cur_text = m_editor->text();
+    QString seg1 = cur_text.mid(0, start -1);
+    QString seg2 = cur_text.mid(end + 1, cur_text.length() - end - 1);
+    m_editor->setText(seg1 + seg2);
+    this->bef_text = m_editor->text(); // same as add string
 }
 
 void MainWindow::process_openfile_dialog_confirm(QString &file_name)
@@ -421,13 +546,17 @@ QString tell_diff(QString &bef_line, QString &aft_line)
     return QString(val);
 }
 
+/* the two functions below should be forbiden */
+
 void MainWindow::send_message_to_server_main_thread(QString &msg, char type)
 {
+    /* when msg is command for add string or delete string
+    the msg contains the position of the original and latter position of cursor */
     QString tmp = msg;
     QString concate;
     char head[5] = {'m', 1, 0, 1};
     QString sep('\1');
-    QString len = QString::number(tmp.length(), 10);
+    QString len = QString::number(tmp.length(), 10); // length of the real information
 
     if (type == 'a') { // add string
         head[2] = 'a';
@@ -464,6 +593,7 @@ void MainWindow::cursor_position_process(int l, int r)
         // std::cout << "  bef:" << bef << "  aft:" << aft << std::endl;
         if (bef < aft) { // add char
             QString text = m_editor->text(bef, aft); // the added string
+            //m_editor->insertAt("a", 1, 1);
             text = text + tail;
             send_message_to_server_main_thread(text, 'a');
             //std::cout << "  add:" << text.toStdString() << std::endl;

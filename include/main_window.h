@@ -9,6 +9,7 @@
 #include <QTextStream>
 #include <QMessageBox>
 #include <QFont>
+#include <QKeyEvent>
 #include <QShortcut>
 #include <QFileDialog>
 #include <QTabWidget>
@@ -54,8 +55,19 @@ signals:
     //void give_alert_msg(QString &msg);
     void window_closing();
     void send_msg_to_server_request(QString str);
+    // void key_delete_pressed();
+    // void key_backsapce_pressed();
+    void key_pressed_signal();
+    void key_released_signal();
+
+protected:
+    void keyPressEvent(QKeyEvent *event);
+    void keyReleaseEvent(QKeyEvent *event);
 
 public slots:
+
+    void process_text_changed();
+
     void on_open();
     void on_open_remote_local();
     void on_add_new_tab();
@@ -87,6 +99,10 @@ public slots:
 
     void process_openfile_dialog_confirm(QString &file_name);
     void process_openfile_dialog_cancel();
+
+    void process_recv_add_string_msg(QString str);
+    void process_recv_delete_string_msg(QString str);
+    void process_recv_modified_string_msg(QString msg);
 
 private:
 

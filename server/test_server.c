@@ -57,7 +57,7 @@ void *recv_client_task(void *args)
             } // error
         } else {
             if ((recv_buf[0] == 'm') && (recv_buf[1] == SEP_SYB)) { // is the message head
-                if (recv_buf[2] == 'a' || recv_buf[2] == 'd') { // add char or delete char
+                if (recv_buf[2] == 'm') { // add char or delete char
                     char cont_len[100];
                     char send_buf[MBUF_SIZE];
                     memcpy(send_buf, recv_buf, MBUF_SIZE);

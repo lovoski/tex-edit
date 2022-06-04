@@ -294,7 +294,7 @@ void MainWindow::process_text_changed()
             }
             QString len = QString::number(changed_lines.length()) + QString('\1');
             QString pos_signature = QString::number(start) + QString('\1') + QString::number(end) + QString('\1');
-            concate = QString(head) + pos_signature + len + changed_lines;
+            concate = QString(head) + pos_signature + len + changed_lines; // 5
         } else if (a_ln > b_ln) { // add, find the added new and changed line
             char head[4] = {'m', '\1', 'a', '\1'};
             int start = 0, end = 0;
@@ -303,23 +303,35 @@ void MainWindow::process_text_changed()
             while ((b_ln-1-end) > 0 && (cur_line_seg[a_ln-1-end] == bef_line_seg[b_ln-1-end]))
                 end++; // index of the last changed line
             /* rule-1: stop when next is not available */
+            /* tule-2: end and start are all the index of the first unequal line */
             int m_end = a_ln-1-end;
             if (start < m_end) { // replace
-                for (int i = 0;i <= end;++i) {
-                    changed_lines.append(cur_line_seg[i]).append('\n');
+                if (m_end == a_ln-1) {
+                    for (int i = start;i <= m_end;++i) {
+                        changed_lines.append(cur_line_seg[i]);
+                        if (i < m_end) changed_lines = changed_lines.append('\n');
+                    }
+                } else {
+                    for (int i = start;i <= m_end;++i) {
+                        changed_lines.append(cur_line_seg[i]).append('\n');
+                    }
                 }
                 QString len = QString::number(changed_lines.length()) + QString('\1');
                 QString pos_signature = QString::number(start) + QString('\1') + QString::number(m_end) + QString('\1');
-                concate = QString(head) + pos_signature + len + changed_lines;
+                concate = QString(head) + pos_signature + len + changed_lines; // 5
             } else if (start == m_end) { // insert
-                changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
+                if (start == a_ln-1) {  // insert at the last line
+                    changed_lines = changed_lines.append(cur_line_seg[start]);
+                } else { // insert somewhere inside the text
+                    changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
+                }
                 QString len = QString::number(changed_lines.length()) + QString('\1');
                 QString pos_signature = QString::number(start) + QString('\1') + QString::number(m_end) + QString('\1');
-                concate = QString(head) + pos_signature + len + changed_lines;
+                concate = QString(head) + pos_signature + len + changed_lines; // 5
             } else if (start > m_end) { // complex, no need for changed_lines
                 QString pos_signature = QString::number(start) + QString('\1') + QString::number(m_end) + QString('\1') 
-                + QString::number(a_ln);
-                concate = QString(head) + pos_signature + changed_lines;
+                + QString::number(a_ln) + QString('\1');
+                concate = QString(head) + pos_signature + changed_lines; // 5
             }
         } else if (a_ln < b_ln) { //delete, find the deleted and changed line
             char head[4] = {'m', '\1', 'd', '\1'};
@@ -331,17 +343,22 @@ void MainWindow::process_text_changed()
             int m_end = b_ln-1-end;
             if (start > m_end) { // complex, no need for changed_lines
                 QString pos_signature = QString::number(start) + QString('\1') + QString::number(m_end) + QString('\1')
-                + QString::number(a_ln); // make sure the after knows how long many lines the new text has
-                concate = QString(head) + pos_signature + changed_lines;
+                + QString::number(a_ln) + QString('\1'); // make sure the after knows how long many lines the new text has
+                concate = QString(head) + pos_signature + changed_lines; // 5
             } else if(start == m_end) { // remove one line indexed start|end
-                changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
+                // changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
                 QString len = QString::number(changed_lines.length()) + QString('\1');
                 QString pos_signature = QString::number(start) + QString('\1') + QString::number(m_end) + QString('\1');
-                concate = QString(head) + pos_signature + len + changed_lines;
-            } else if (start < m_end) { // remove from start ot end, insert the line at start
+                concate = QString(head) + pos_signature + len + changed_lines; // 5
+            } else if (start < m_end) { // remove from start to end, insert the line at start
+                if (start == a_ln-1) { // the inserted line at the end line
+                    changed_lines = changed_lines.append(cur_line_seg[start]);
+                } else {
+                    changed_lines = changed_lines.append(cur_line_seg[start]).append('\n');
+                }
                 QString len = QString::number(changed_lines.length()) + QString('\1');
                 QString pos_signature = QString::number(start) + QString('\1') + QString::number(m_end) + QString('\1');
-                concate = QString(head) + pos_signature + len + changed_lines;
+                concate = QString(head) + pos_signature + len + changed_lines; // 5
             } // keep in mind that end and start starts at 0, so the real value should -2
         }
         emit send_msg_to_server_request(concate); // emit signal with modifiyed msg
@@ -362,7 +379,7 @@ void MainWindow::process_recv_modified_string_msg(QString msg)
     QStringList cur_lines = m_editor->text().split('\n');
     QString changed_text("");
     int b_ln = cur_lines.length();
-
+    // do not insert '\n' at the end of text
     if (list[1] == QString('m')) { // modify in lines, end is forward
         std::cout << "mod" << std::endl;
         for (int i = 0;i < start;++i) {
@@ -426,7 +443,8 @@ void MainWindow::process_recv_modified_string_msg(QString msg)
             for (int i = 0;i < start;++i) {
                 changed_text = changed_text.append(cur_lines[i]).append('\n');
             }
-            changed_text.append(list[5]).append('\n');
+            // the '\n' has been added to the list[5] if the content is in the middle of text
+            changed_text.append(list[5]); // if the removed one is the last line of text
             for (int i = end + 1;i < b_ln;++i) {
                 changed_text = changed_text.append(cur_lines[i]);
                 if (i < b_ln-1) changed_text = changed_text.append('\n');

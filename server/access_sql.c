@@ -68,21 +68,45 @@ void insert_fullop_into_mysql(MYSQL *sql, char *full_query_sentence)
     }
 }
 
-char *query_texfile_from_database(MYSQL *sql, char *file_name)
+tex_file *query_texfile_from_database(MYSQL *sql, char *file_name, tex_file *file)
 {
-    int res = __query_for_texfile_name(sql, file_name);
-    if (res == 2) {
-
-    } else { // file do not exists
-
+    if (mysql_query(sql, "SELECT * FROM tex_file")) {
+        printf("error querying tex_file, %s\n", mysql_error(sql));
+        file->len = -1;
+        file->index = -1;
+        return file;
     }
+    MYSQL_RES *res = mysql_store_result(sql);
+    if (res == NULL) {
+        printf("error fetching mysql_res, %s\n", mysql_error(sql));
+        file->len = -1;
+        file->index = -1;
+        return file;
+    }
+    int field_num = mysql_num_fields(res);
+    MYSQL_FIELD *fields = mysql_fetch_fields(res);
+    MYSQL_ROW row;
+    int row_count = 0;
+    while ((row = mysql_fetch_row(res)) != NULL) {
+        if (compare_string(row[0], file_name)) { // file found
+            printf("existing tex file found\n");
+            unsigned int len = strlen(row[1]);
+            file->index = row_count;
+            file->len = len;
+            memcpy(file->content, row[1], len);
+            return file;
+        }
+        row_count++;
+    }
+    file->len = -1;
+    return file; // not found
 }
 
 int __query_for_texfile_name(MYSQL *sql, char *file_name)
 {
     if (mysql_query(sql, "SELECT * FROM tex_file")) {
         printf("Error: %s\n", mysql_error(sql));
-        return 0; // exit with 1 when error occurrs
+        return -1; // exit with -1 when error occurrs
     }
     MYSQL_RES *res = mysql_store_result(sql);
     MYSQL_ROW sql_row;

@@ -13,4 +13,6 @@
 /server/test/
 /test/
 
+/server/store/*
+
 /server/test_server

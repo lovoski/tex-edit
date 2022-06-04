@@ -15,13 +15,12 @@ extern "C"
 #include <errno.h>
 #include <arpa/inet.h>
 
-#define MBUF_SIZE   1024
+#define MBUF_SIZE 4096
 #define SEP_SYB     1
 
 void MainWindow::send_msg_to_server(QString msg)
 {
     if (this->connected) {
-        printf("mainwindow send\n");
         int len = msg.length();
         if (len > MBUF_SIZE) {
             printf("too long string\n");
@@ -29,9 +28,10 @@ void MainWindow::send_msg_to_server(QString msg)
             char send_buf[MBUF_SIZE];
             memset(send_buf, 0, MBUF_SIZE);
             std::string tmp = msg.toStdString();
+            std::cout << "msg to be send: " << tmp << std::endl;
             for (int i = 0;i < len;++i) {
                 send_buf[i] = tmp[i];
-            }
+            } // regardless of the information head
             int n = ::write(this->sockfd, send_buf, MBUF_SIZE);
             if (n == -1) printf("mainwindow send error\n");
         }
@@ -73,6 +73,7 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
         int rc = 0;
         while ((rc = ::connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) < 0) {
             connect_times++;
+            ::usleep(100000);
             if (connect_times > 20) break;
         }
         if (rc < 0) {
@@ -82,7 +83,7 @@ void MainWindow::connect_to_server() // embed C code in c++ needs to specify :: 
         } else { // rc=0 stands for success
             printf("connected to server, sockfd=%d\n", this->sockfd);
             this->connected = 1; // only by this far can the conection be secured to be valid
-
+            this->setWindowTitle("tex-edit(connected)");
             /* tell the sub-thread what the file descipter is, setup dead loop */
             this->s_thread->sockfd = this->sockfd;
             this->s_thread->connected = true;
@@ -122,6 +123,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     open = new QAction(tr("open"), this);
     o_remote = new QAction(tr("open remote"), this);
+    c_remote = new QAction(tr("create remote"), this);
     add_tab = new QAction(tr("new tab"), this);
     save = new QAction(tr("save"), this);
     close = new QAction(tr("close"), this);
@@ -137,6 +139,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_m1->addAction(add_tab);
     m_m1->addAction(open);
     m_m1->addAction(o_remote);
+    m_m1->addAction(c_remote);
     m_m1->addAction(save);
     m_m1->addAction(close);
     m_m2->addAction(connect);
@@ -147,8 +150,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_m4->addAction(about);
 
     this->setMenuBar(m_mB);
-    this->setCentralWidget(main_tab);
-    main_tab->addTab(m_editor, "editor");
+    this->setCentralWidget(m_editor);
+    // main_tab->addTab(m_editor, "editor");
 
     //this->setCentralWidget(m_editor);
 }
@@ -159,6 +162,7 @@ MainWindow::~MainWindow()
     delete add_tab;
     delete main_tab;
     delete dialog;
+    delete c_remote;
     delete sig_col;
     delete s_thread;
     delete m_thread;
@@ -211,6 +215,7 @@ void MainWindow::connet_slots()
     QObject::connect(open, &QAction::triggered, this, &MainWindow::on_open);
     QObject::connect(add_tab, &QAction::triggered, this, &MainWindow::on_add_new_tab);
     QObject::connect(o_remote, &QAction::triggered, this, &MainWindow::on_open_remote_local);
+    QObject::connect(c_remote, &QAction::triggered, this, &MainWindow::on_open_remote_local);
     QObject::connect(save, &QAction::triggered, this, &MainWindow::on_save);
     QObject::connect(close, &QAction::triggered, this, &MainWindow::on_close);
     QObject::connect(close, &QAction::triggered, this, &QMainWindow::close);
@@ -232,10 +237,16 @@ void MainWindow::connet_slots()
     QObject::connect(o_dialog, &openfile_dialog::confirm_btn_clicked_signal, this, &MainWindow::process_openfile_dialog_confirm);
     QObject::connect(o_dialog, &openfile_dialog::cancel_btn_clicked_signal, this, &MainWindow::process_openfile_dialog_cancel);
 
+    QObject::connect(o_dialog, &openfile_dialog::create_file_signal, this, &MainWindow::process_create_file_property);
+
     // tell the mainwindow class to process the received message from other clients
     //QObject::connect(s_thread, &SocketThread::recv_add_string_msg, this, &MainWindow::process_recv_add_string_msg);
     //QObject::connect(s_thread, &SocketThread::recv_delete_string_msg, this, &MainWindow::process_recv_delete_string_msg);
     QObject::connect(s_thread, &SocketThread::recv_modified_string_msg, this, &MainWindow::process_recv_modified_string_msg);
+
+    QObject::connect(s_thread, &SocketThread::recv_create_file_msg, this, &MainWindow::process_create_remote_file_sig);
+    QObject::connect(s_thread, &SocketThread::recv_open_file_msg, this, &MainWindow::process_open_remote_file_sig);
+    //QObject::connect(s_thread, &SocketThread::recv_compiled_file_msg, this, &MainWindow::process_compiled_file_sig);
 }
 
 void MainWindow::bind_shortcut()
@@ -456,61 +467,67 @@ void MainWindow::process_recv_modified_string_msg(QString msg)
     bef_text = m_editor->text();
 }
 
-void __sep_length(const char *recv_buf, const int len)
+void MainWindow::process_open_remote_file_sig(QString msg)
 {
-    char num[50], sep_c = 0, num_i = 0;
-    memset(num, 0, sizeof(num));
-    for (int i = 0;i < len;++i) {
-        if (recv_buf[i] == SEP_SYB) sep_c++;
-        if (sep_c == 2) {
-            num[num_i] = recv_buf[i];
-            num_i++;
-        } else if (sep_c > 2) break;
-    } // the num[] is the length of whole information
+    if (msg[3] == 's') {
+        std::cout << "succeed in opening remote file" << std::endl;
+        std::cout << "file:" << msg.toStdString() << std::endl;
+    } else {
+        std::cout << "faild in opening remote file" << std::endl;
+    }
 }
-
-void MainWindow::process_recv_add_string_msg(QString str)
+void MainWindow::process_create_remote_file_sig(QString msg)
 {
-    QStringList list = str.split('\1');
-    QString content = list[3];
-    int o_l = list[4].toInt(), o_i = list[5].toInt();
-    // std::cout << "content:" << content.toStdString() << std::endl;
-    // std::cout << o_l << " " << o_i << " " << a_l << " " << a_i << std::endl;
-    m_editor->insertAt(content, o_l, o_i);
-    this->bef_text = m_editor->text(); // reset the text before to make sure nothing went wrong
+    if (msg[3] == 's') {
+        std::cout << "succeed in creating remote file" << std::endl;
+        m_editor->setText("");
+        this->bef_text = "";
+    } else {
+        std::cout << "faild in creating remote file" << std::endl;
+    }
 }
-
-void MainWindow::process_recv_delete_string_msg(QString str)
+void MainWindow::process_compiled_file_sig(QByteArray msg)
 {
-    QStringList list = str.split('\1');
-    int o_l = list[4].toInt(), o_i = list[5].toInt();
-    int a_l = list[6].toInt(), a_i = list[7].toInt();
-    int start = m_editor->positionFromLineIndex(o_l, o_i);
-    int end = m_editor->positionFromLineIndex(a_l, a_i);
-    QString cur_text = m_editor->text();
-    QString seg1 = cur_text.mid(0, start -1);
-    QString seg2 = cur_text.mid(end + 1, cur_text.length() - end - 1);
-    m_editor->setText(seg1 + seg2);
-    this->bef_text = m_editor->text(); // same as add string
+    if (msg[3] == 's') {
+        std::cout << "succeed in compiling file" << std::endl;
+    } else {
+        std::cout << "faild in compiling file" << std::endl;
+    }
 }
 
 void MainWindow::process_openfile_dialog_confirm(QString &file_name)
 {
+    o_dialog->hide();
     QString tmp_file_name = file_name;
     if (tmp_file_name != "" && !tmp_file_name.isNull()) {
         // send_message_to_server_main_thread();
+        if (this->create_remote_file) {
+            char head[4] = {'m', '\1', 'r', '\1'};
+            QString msg = QString(head) + file_name;
+            emit send_msg_to_server_request(msg);
+        } else {
+            char head[4] = {'m', '\1', 'o', '\1'};
+            QString msg = QString(head) + file_name;
+            emit send_msg_to_server_request(msg); // send msg to server
+        }
     }
+}
+
+void MainWindow::process_create_file_property(bool checked)
+{
+    printf("set create remote file to: %d\n", checked);
+    this->create_remote_file = checked;
 }
 
 void MainWindow::process_openfile_dialog_cancel()
 {
-    this->o_dialog->hide();
+    o_dialog->hide();
 }
 
 void MainWindow::on_add_new_tab()
 {
-    QsciScintilla *tmp = new QsciScintilla;
-    main_tab->addTab(tmp, "new");
+    /* QsciScintilla *tmp = new QsciScintilla;
+    main_tab->addTab(tmp, "new"); */
 }
 
 void MainWindow::on_open_remote_local()
@@ -518,6 +535,7 @@ void MainWindow::on_open_remote_local()
     if (!this->connected) {
         QMessageBox::warning(this,tr("Error") , tr("connect to server first"));
     } else {
+        o_dialog->show(); // start the open_remote_file_dialog
         // send_message_to_server_main_thread();
     }
 }
@@ -547,19 +565,23 @@ void MainWindow::on_save()
 {
     if (this->selected_file == "") {
         // not an opened file
-        QString file_name = QFileDialog::getSaveFileName(this, tr("save file"), "./");
-        if (!file_name.isNull()) {
-            this->selected_file = file_name;
-            QFile save_file(file_name);
-            if (!save_file.open(QFile::ReadWrite|QFile::Text)) {
-                QMessageBox::warning(this,tr("Error") , tr("save file failed"));
-            } else {
-                QTextStream out(&save_file);
-                QString output_text = m_editor->text();
-                out << output_text;
-                out.flush();
+        if (!this->connected) { // save remote file
+
+        } else {
+            QString file_name = QFileDialog::getSaveFileName(this, tr("save file"), "./");
+            if (!file_name.isNull()) {
+                this->selected_file = file_name;
+                QFile save_file(file_name);
+                if (!save_file.open(QFile::ReadWrite|QFile::Text)) {
+                    QMessageBox::warning(this,tr("Error") , tr("save file failed"));
+                } else {
+                    QTextStream out(&save_file);
+                    QString output_text = m_editor->text();
+                    out << output_text;
+                    out.flush();
+                }
+                save_file.close();
             }
-            save_file.close();
         }
     } else {
         // an opened file
@@ -589,10 +611,17 @@ void MainWindow::on_disconnect()
         this->m_thread->quit();
         this->m_thread->wait();
         this->connected = false;
+        this->setWindowTitle("tex-edit");
         this->sub_thread_running = false;
     }
 }
-void MainWindow::m_on_compile_show(){}
+void MainWindow::m_on_compile_show()
+{
+    QString text = m_editor->text();
+    char head[4] = {'m', '\1', 'c', '\1'};
+    QString send_text = QString(head) + text;
+    emit send_msg_to_server_request(send_text);
+}
 void MainWindow::m_on_compile_only(){}
 void MainWindow::on_help(){}
 void MainWindow::on_about(){}
@@ -655,87 +684,4 @@ void MainWindow::processing_bef_window_closed()
         this->m_thread->wait();
         sub_thread_running = 0;
     }
-}
-
-QString tell_diff(QString &bef_line, QString &aft_line)
-{
-    int len = bef_line.length();
-    std::string bef = bef_line.toStdString();
-    std::string aft = aft_line.toStdString();
-    char val[200];
-    int index = 0, a = 0;
-    for (int b = 0;b < len;b++) {
-        if (bef[b] == aft[a]) {
-            a++;
-        } else {
-            val[index] = bef[b];
-            index++;
-        }
-    }
-    val[index] = 0;
-    return QString(val);
-}
-
-/* the two functions below should be forbiden */
-
-void MainWindow::send_message_to_server_main_thread(QString &msg, char type)
-{
-    /* when msg is command for add string or delete string
-    the msg contains the position of the original and latter position of cursor */
-    QString tmp = msg;
-    QString concate;
-    char head[5] = {'m', 1, 0, 1};
-    QString sep('\1');
-    QString len = QString::number(tmp.length(), 10); // length of the real information
-
-    if (type == 'a') { // add string
-        head[2] = 'a';
-        concate = QString(head) + len + sep + tmp;
-    } else if (type == 'd') { // delete string
-        head[2] = 'd';
-        concate = QString(head) + len + sep + tmp;
-    } else if (type == 'c') { // compile whole text
-        head[2] = 'c';
-        std::cout << "compile" << std::endl;
-    } else if (type == 'o') { // open destinated text
-        head[2] = 'o';
-        std::cout << "open" << std::endl;
-    } else {
-        std::cout << "others" << std::endl;
-    }
-    // printf("length of concate msg: %d\n", concate.length());
-    // std::cout << concate.toStdString() << std::endl;
-    emit send_msg_to_server_request(concate); // emit signal with modifiyed msg
-}
-
-void MainWindow::cursor_position_process(int l, int r)
-{
-    QString aft_text = m_editor->text();
-    if (bef_text == aft_text) { // only change the position of the cursor
-        //std::cout << "only move cursor, selected text:" << m_editor->selectedText().toStdString() << std::endl;
-    } else {
-        int bef = m_editor->positionFromLineIndex(cursor_line, cursor_index);
-        int aft = m_editor->positionFromLineIndex(l, r);
-        /* construct the position of current and before cursor position */
-        QString tail_b = QString('\1') + QString::number(cursor_line, 10) + QString('\1') + QString::number(cursor_index, 10);
-        QString tail_a = QString('\1') + QString::number(l, 10) + QString('\1') + QString::number(r, 10);
-        QString tail = tail_b + tail_a;
-        // std::cout << "  bef:" << bef << "  aft:" << aft << std::endl;
-        if (bef < aft) { // add char
-            QString text = m_editor->text(bef, aft); // the added string
-            //m_editor->insertAt("a", 1, 1);
-            text = text + tail;
-            send_message_to_server_main_thread(text, 'a');
-            //std::cout << "  add:" << text.toStdString() << std::endl;
-        } else { // delete char
-            QString text = tell_diff(bef_text, aft_text);
-            text = text + tail;
-            send_message_to_server_main_thread(text, 'd');
-            //std::cout << "  mdel:" << text.toStdString() << std::endl;
-        }
-    }
-    this->cursor_line = l;
-    this->cursor_index = r;
-    this->bef_text = this->m_editor->text();
-    return; // change the cursor position and return
 }

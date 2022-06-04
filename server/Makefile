@@ -11,6 +11,7 @@ C_OBJ=test_server.o \
 TARGET=test_server
 
 all:
+	rm -rf *.o test_server
 	$(CC) -c $(C_FILES) -I. -I /usr/include/mysql
 	$(CC) $(C_OBJ) -o $(TARGET) -lpthread -lmysqlclient
 

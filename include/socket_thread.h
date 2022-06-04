@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QThread>
 #include <string>
+#include <QBitArray>
 
 class SignalCollection : public QObject
 {
@@ -39,6 +40,9 @@ signals:
     void recv_add_string_msg(QString str);
     void recv_delete_string_msg(QString str);
     void recv_modified_string_msg(QString str);
+    void recv_create_file_msg(QString str);
+    void recv_open_file_msg(QString str);
+    void recv_compiled_file_msg(QBitArray arr);
 
 public slots:
     // setting up basic behavior of a socket

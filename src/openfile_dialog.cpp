@@ -8,6 +8,9 @@ openfile_dialog::openfile_dialog(QWidget *parent) :
     ui->setupUi(this);
     QObject::connect(ui->confirm, &QPushButton::clicked, this, &openfile_dialog::emit_confirm_btn_clicked_signal);
     QObject::connect(ui->cancel, &QPushButton::clicked, this, &openfile_dialog::emit_confirm_btn_clicked_signal);
+    QObject::connect(ui->radioButton, &QRadioButton::toggled, [=](bool checked){
+        emit create_file_signal(checked);
+    });
 }
 
 openfile_dialog::~openfile_dialog()

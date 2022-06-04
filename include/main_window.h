@@ -7,6 +7,7 @@
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QTextStream>
+#include <QBitArray>
 #include <QMessageBox>
 #include <QFont>
 #include <QKeyEvent>
@@ -66,7 +67,13 @@ protected:
 
 public slots:
 
+    void process_open_remote_file_sig(QString msg);
+    void process_create_remote_file_sig(QString msg);
+    void process_compiled_file_sig(QByteArray msg);
+
     void process_text_changed();
+
+    void process_create_file_property(bool checked);
 
     void on_open();
     void on_open_remote_local();
@@ -90,18 +97,12 @@ public slots:
     // process alert dialog
     void close_alert_dialog();
 
-    // show position of cursor
-    void cursor_position_process(int l, int r);
-
     // parse message to be send to signal
-    void send_message_to_server_main_thread(QString &msg, char type);
     void set_connection_info(QString host, QString name_id, unsigned int port);
 
     void process_openfile_dialog_confirm(QString &file_name);
     void process_openfile_dialog_cancel();
 
-    void process_recv_add_string_msg(QString str);
-    void process_recv_delete_string_msg(QString str);
     void process_recv_modified_string_msg(QString msg);
 
 private:
@@ -110,6 +111,7 @@ private:
     QString name_id;
     unsigned int port;
 
+    bool create_remote_file = false;
     bool sub_thread_running = 0;
     bool connected = 0;
     int sockfd = -1;
@@ -131,6 +133,7 @@ private:
     QAction *open;
     QAction *add_tab;
     QAction *o_remote;
+    QAction *c_remote;
     QAction *save;
     QAction *close;
 

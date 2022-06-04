@@ -5,7 +5,9 @@
 #include <QDialog>
 #include <QString>
 #include <iostream>
+#include <QBitArray>
 #include <QPushButton>
+#include <QRadioButton>
 
 namespace Ui {
 class openfile_dialog;
@@ -18,6 +20,7 @@ class openfile_dialog : public QDialog
 signals:
     void confirm_btn_clicked_signal(QString &file_name);
     void cancel_btn_clicked_signal();
+    void create_file_signal(bool checked);
 public slots:
     void emit_confirm_btn_clicked_signal();
     void emit_cancel_btn_clicked_signal();

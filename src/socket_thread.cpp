@@ -21,7 +21,7 @@ extern "C"
 #include <errno.h>
 #include <arpa/inet.h>
 
-#define MBUF_SIZE   1024
+#define MBUF_SIZE 4096
 #define SEP_SYB     1
 
 /* the function is only called when the connection is ensured to be valid */
@@ -45,9 +45,16 @@ void SocketThread::start_listening_thread()
             wait_count++;
             // break; // when the connection is dead // this is non-blocking soccket, no need for break
         } else { // process the received message
-            if (recv_buf[2] == 'm' || recv_buf[2] == 'a' || recv_buf[2] == 'd') { // modify string
+            std::cout << "recv msg: " << recv_buf << std::endl;
+            if (recv_buf[0] == 'm' && recv_buf[1] == 1 && recv_buf[3] == 1) { // modify string
                 QString tmp(recv_buf);
                 emit recv_modified_string_msg(tmp);
+            } else if (recv_buf[0] == '\1' && recv_buf[1] == '\1' && recv_buf[2] == '\1') { // created file
+                QString tmp(recv_buf);
+                emit recv_create_file_msg(tmp);
+            } else if (recv_buf[0] == '\1' && recv_buf[1] == '\2' && recv_buf[2] == '\1') { // open file
+                QString tmp(recv_buf);
+                emit recv_open_file_msg(tmp);
             } else {
                 printf("recv command undefined\n, recv_buf=%s\n", recv_buf);
             }

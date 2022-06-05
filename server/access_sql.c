@@ -93,6 +93,7 @@ tex_file *query_texfile_from_database(MYSQL *sql, char *file_name, tex_file *fil
             unsigned int len = strlen(row[1]);
             file->index = row_count;
             file->len = len;
+            printf("found file content=%s, length=%d\n", row[1], len);
             memcpy(file->content, row[1], len);
             return file;
         }

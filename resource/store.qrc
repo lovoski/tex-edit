@@ -1,8 +1,6 @@
 <RCC>
-    <qresource prefix="/pdf_test">
-        <file>test/QScintilla.pdf</file>
-    </qresource>
-    <qresource prefix="/pic">
-        <file>test/Y1_S_Classes.png</file>
+    <qresource prefix="/text">
+        <file>keyworks.txt</file>
+        <file>n_keywords.txt</file>
     </qresource>
 </RCC>

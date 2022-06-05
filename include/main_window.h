@@ -8,9 +8,12 @@
 #include <QMenuBar>
 #include <QTextStream>
 #include <QBitArray>
+#include <QProcess>
+#include <QByteArray>
 #include <QMessageBox>
 #include <QFont>
 #include <QKeyEvent>
+#include <QDir>
 #include <QShortcut>
 #include <QFileDialog>
 #include <QTabWidget>
@@ -19,6 +22,7 @@
 #include <QChar>
 #include <QColor>
 #include <QAction>
+#include <QInputDialog>
 #include <QMenu>
 
 #include <iostream>
@@ -27,9 +31,12 @@
 #include "include/socket_thread.h"
 #include "include/conn_dialog.h"
 #include "include/openfile_dialog.h"
+#include "include/image_dialog.h"
 
 #include "3rdparty/unix/include/qt5/poppler-qt5.h"
 #include "3rdparty/unix/include/Qsci/qsciscintilla.h"
+#include "3rdparty/unix/include/Qsci/qscilexertex.h"
+#include "3rdparty/unix/include/Qsci/qsciapis.h"
 
 #define WD_WIDHT 600
 #define WD_HEIGHT 500
@@ -111,6 +118,8 @@ private:
     QString name_id;
     unsigned int port;
 
+    QWidget *image_widget;
+
     bool create_remote_file = false;
     bool sub_thread_running = 0;
     bool connected = 0;
@@ -149,9 +158,12 @@ private:
     QAction *help;
     QAction *about;
 
+    QInputDialog *id_dialog;
+
     QsciScintilla *m_editor;
     Conn_Dialog *dialog;
     openfile_dialog *o_dialog;
+    image_dialog *i_dialog;
     //Alert_Dialog *a_dialog;
 };
 #endif // MAIN_WINDOW_H

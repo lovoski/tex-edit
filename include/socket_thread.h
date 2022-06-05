@@ -42,7 +42,7 @@ signals:
     void recv_modified_string_msg(QString str);
     void recv_create_file_msg(QString str);
     void recv_open_file_msg(QString str);
-    void recv_compiled_file_msg(QBitArray arr);
+    void recv_compiled_file_msg(QByteArray arr);
 
 public slots:
     // setting up basic behavior of a socket

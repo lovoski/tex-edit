@@ -13,7 +13,8 @@ SOURCES += \
     src/main.cpp \
     src/main_window.cpp \
     src/openfile_dialog.cpp \
-    src/socket_thread.cpp
+    src/socket_thread.cpp \
+    src/image_dialog.cpp
 
 HEADERS += \
     3rdparty/unix/include/* \
@@ -22,7 +23,8 @@ HEADERS += \
     include/main_window.h \
     include/socket_thread.h \
     include/conn_dialog.h \
-    include/openfile_dialog.h
+    include/openfile_dialog.h \
+    include/image_dialog.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
@@ -52,4 +54,22 @@ DEPENDPATH += $$PWD/3rdparty/unix
 
 FORMS += \
     ui/openfile_dialog.ui \
-    ui/conn_dialog.ui
+    ui/conn_dialog.ui \
+    ui/image_dialog.ui
+
+win32:CONFIG(release, debug|release): LIBS += -L$$PWD/3rdparty/unix/release/ -lpoppler-glib
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/3rdparty/unix/debug/ -lpoppler-glib
+else:unix: LIBS += -L$$PWD/3rdparty/unix/ -lpoppler-glib
+
+INCLUDEPATH += $$PWD/3rdparty/unix
+DEPENDPATH += $$PWD/3rdparty/unix
+
+win32:CONFIG(release, debug|release): LIBS += -L$$PWD/3rdparty/unix/release/ -lpoppler-cpp
+else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/3rdparty/unix/debug/ -lpoppler-cpp
+else:unix: LIBS += -L$$PWD/3rdparty/unix/ -lpoppler-cpp
+
+INCLUDEPATH += $$PWD/3rdparty/unix
+DEPENDPATH += $$PWD/3rdparty/unix
+
+RESOURCES += \
+    resource/store.qrc

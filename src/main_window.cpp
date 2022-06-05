@@ -105,6 +105,8 @@ MainWindow::MainWindow(QWidget *parent)
     this->s_thread = new SocketThread;
     this->dialog = new Conn_Dialog;
     this->o_dialog = new openfile_dialog;
+    this->i_dialog = new image_dialog;
+    this->id_dialog = new QInputDialog;
     //this->a_dialog = new Alert_Dialog;
     this->s_thread->moveToThread(this->m_thread);
 
@@ -121,7 +123,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_m3 = m_mB->addMenu(tr("Comp"));
     m_m4 = m_mB->addMenu(tr("Help"));
 
-    open = new QAction(tr("open"), this);
+    open = new QAction(tr("open local"), this);
     o_remote = new QAction(tr("open remote"), this);
     c_remote = new QAction(tr("create remote"), this);
     add_tab = new QAction(tr("new tab"), this);
@@ -129,23 +131,23 @@ MainWindow::MainWindow(QWidget *parent)
     close = new QAction(tr("close"), this);
     connect = new QAction(tr("connect"), this);
     disconnect = new QAction(tr("disconnect"), this);
-    comp_s = new QAction(tr("compile_show"), this);
+    comp_s = new QAction(tr("compile"), this);
     comp_o = new QAction(tr("compile_only"), this);
     help = new QAction(tr("help"), this);
     about = new QAction(tr("about"), this);
 
     connet_slots();
 
-    m_m1->addAction(add_tab);
+    // m_m1->addAction(add_tab);
     m_m1->addAction(open);
     m_m1->addAction(o_remote);
-    m_m1->addAction(c_remote);
+    // m_m1->addAction(c_remote);
     m_m1->addAction(save);
     m_m1->addAction(close);
     m_m2->addAction(connect);
     m_m2->addAction(disconnect);
     m_m3->addAction(comp_s);
-    m_m3->addAction(comp_o);
+    // m_m3->addAction(comp_o);
     m_m4->addAction(help);
     m_m4->addAction(about);
 
@@ -165,6 +167,7 @@ MainWindow::~MainWindow()
     delete c_remote;
     delete sig_col;
     delete s_thread;
+    delete id_dialog;
     delete m_thread;
     delete o_dialog;
     delete m_mB;
@@ -188,16 +191,27 @@ MainWindow::~MainWindow()
 void MainWindow::setup_editor(QsciScintilla *editor)
 {
     //QsciLexerCPP *textLexer = new QsciLexerCPP;
+    QsciLexerTeX *textLexer = new QsciLexerTeX;
+    QsciAPIs *apis = new QsciAPIs(textLexer);
+    //editor->setLexer(textLexer);
     //m_editor->setLexer(textLexer);
-    editor->setCaretForegroundColor(QColor(250,0,0));
-    //m_editor->setCaretWidth(5);
+    //editor->setCaretForegroundColor(QColor(250,0,0));
+    m_editor->setCaretWidth(5);
     QFont dest_font;
-    dest_font.setPointSize(13);
+    dest_font.setPointSize(14);
     editor->setFont(dest_font);
+    textLexer->setDefaultFont(dest_font);
+    editor->setStyleSheet("QPainter {background-color:red;}");
     editor->setCaretLineVisible(true);
     editor->setCaretLineBackgroundColor(QColor(200,200,200));
     editor->setMarginType(0, QsciScintilla::NumberMargin);
     editor->setMarginWidth(0, 30);
+
+    //editor->setAutoCompletionCaseSensitivity(true);
+    //editor->setAutoCompletionThreshold(1);
+    //editor->setAutoCompletionSource(QsciScintilla::AcsAll);
+    //apis->load(":/text/n_keywords.txt");
+    //apis->prepare();
 
     // this needs to be abandoned due to severe problem
     // QObject::connect(m_editor, &QsciScintilla::cursorPositionChanged, this, &MainWindow::cursor_position_process);
@@ -246,7 +260,7 @@ void MainWindow::connet_slots()
 
     QObject::connect(s_thread, &SocketThread::recv_create_file_msg, this, &MainWindow::process_create_remote_file_sig);
     QObject::connect(s_thread, &SocketThread::recv_open_file_msg, this, &MainWindow::process_open_remote_file_sig);
-    //QObject::connect(s_thread, &SocketThread::recv_compiled_file_msg, this, &MainWindow::process_compiled_file_sig);
+    QObject::connect(s_thread, &SocketThread::recv_compiled_file_msg, this, &MainWindow::process_compiled_file_sig);
 }
 
 void MainWindow::bind_shortcut()
@@ -284,7 +298,7 @@ void MainWindow::process_text_changed()
         QString changed_lines = "", concate;
         int a_ln = cur_line_seg.length();
         int b_ln = bef_line_seg.length();
-        std::cout << "after_line=" << a_ln << ", bef_line=" << b_ln << std::endl;
+        //std::cout << "after_line=" << a_ln << ", bef_line=" << b_ln << std::endl;
         if (a_ln == b_ln) { // modify, many lines can be changed, but the stays the same
             char head[4] = {'m', '\1', 'm', '\1'};
             int start = 0, end = a_ln-1;
@@ -470,8 +484,9 @@ void MainWindow::process_recv_modified_string_msg(QString msg)
 void MainWindow::process_open_remote_file_sig(QString msg)
 {
     if (msg[3] == 's') {
-        std::cout << "succeed in opening remote file" << std::endl;
-        std::cout << "file:" << msg.toStdString() << std::endl;
+        std::cout << "opening remote file, content: " << msg.toStdString() << std::endl;
+        m_editor->setText(msg.mid(4, msg.length()-4));
+        this->bef_text = msg.mid(4, msg.length()-4);
     } else {
         std::cout << "faild in opening remote file" << std::endl;
     }
@@ -488,11 +503,36 @@ void MainWindow::process_create_remote_file_sig(QString msg)
 }
 void MainWindow::process_compiled_file_sig(QByteArray msg)
 {
-    if (msg[3] == 's') {
-        std::cout << "succeed in compiling file" << std::endl;
-    } else {
-        std::cout << "faild in compiling file" << std::endl;
+    int name = rand();
+    QDir parent("/home/lovoski/Code/Qt/tex-edit/server_recv");
+    if (!parent.exists()) {
+        if (!parent.mkdir(QString("/home/lovoski/Code/Qt/tex-edit/server_recv")))
+            std::cout << "error create parent dir" << std::endl;
     }
+    QString prefix = QString("/home/lovoski/Code/Qt/tex-edit/server_recv/") + QString::number(name) + QString(".pdf");
+    QFile out_file(prefix);
+    std::cout << "length of pdf: " << msg.length() << std::endl;
+    if (!out_file.open(QFile::ReadWrite | QFile::Text)) {
+        QMessageBox::warning(this,tr("Error") , tr("write file failed"));
+    } else {
+        QDataStream out(&out_file);
+        out.writeBytes(msg.data(), msg.length());
+        std::cout << "write finished" << std::endl;
+        //Poppler::Document *doc = Poppler::Document::load(prefix);
+        //int page_num = doc->numPages();
+        /*for (int i = 0;i < page_num;++i) {
+            int w = doc->page(i)->pageSize().width();
+            int h = doc->page(i)->pageSize().height();
+            QImage img = doc->page(i)->renderToImage(0 , 0, w, h);
+            //i_dialog->add_image(img);
+        }*/
+        //i_dialog->show();
+        // lay lan !!!
+        QProcess *helpProcess = new QProcess(this);
+        QStringList argument(prefix);
+        helpProcess->start("gv", argument);
+    }
+    out_file.close();
 }
 
 void MainWindow::process_openfile_dialog_confirm(QString &file_name)
@@ -535,8 +575,12 @@ void MainWindow::on_open_remote_local()
     if (!this->connected) {
         QMessageBox::warning(this,tr("Error") , tr("connect to server first"));
     } else {
-        o_dialog->show(); // start the open_remote_file_dialog
+        // o_dialog->show(); // start the open_remote_file_dialog
         // send_message_to_server_main_thread();
+        QString file_name = QInputDialog::getText(this, "open remote file", "file name: ");
+        char head[4] = {'m', 1, 'o', 1};
+        QString msg = QString(head) + file_name;
+        emit send_msg_to_server_request(msg);
     }
 }
 
@@ -563,10 +607,17 @@ void MainWindow::on_close()
 }
 void MainWindow::on_save()
 {
-    if (this->selected_file == "") {
+    std::cout << "selected file=" << this->selected_file.toStdString() << std::endl;
+    if (this->selected_file == QString("")) {
         // not an opened file
-        if (!this->connected) { // save remote file
-
+        if (this->connected) { // save remote file
+            char head[4] = {'m', '\1', 's', '\1'};
+            id_dialog->setLabelText(QString("enter a name"));
+            QString text = QInputDialog::getText(this, "enter a name", "file name");
+            this->selected_file = text;
+            std::cout << "input string: " << text.toStdString() << std::endl;
+            QString msg = QString(head) + text + QString('\1') + m_editor->text();
+            emit send_msg_to_server_request(msg);
         } else {
             QString file_name = QFileDialog::getSaveFileName(this, tr("save file"), "./");
             if (!file_name.isNull()) {
@@ -585,16 +636,22 @@ void MainWindow::on_save()
         }
     } else {
         // an opened file
-        QFile save_file(this->selected_file);
-        if (!save_file.open(QFile::ReadWrite|QFile::Text)) {
-            QMessageBox::warning(this,tr("Error") , tr("save file failed"));
+        if (this->connected) {
+            char head[4] = {'m', '\1', 's', '\1'};
+            QString msg = QString(head) + this->selected_file + QString('\1') + m_editor->text();
+            emit send_msg_to_server_request(msg);
         } else {
-            QTextStream out(&save_file);
-            QString output_text = m_editor->text();
-            out << output_text;
-            out.flush();
+            QFile save_file(this->selected_file);
+            if (!save_file.open(QFile::ReadWrite|QFile::Text)) {
+                QMessageBox::warning(this,tr("Error") , tr("save file failed"));
+            } else {
+                QTextStream out(&save_file);
+                QString output_text = m_editor->text();
+                out << output_text;
+                out.flush();
+            }
+            save_file.close();
         }
-        save_file.close();
     }
 }
 void MainWindow::on_connect()
@@ -624,7 +681,9 @@ void MainWindow::m_on_compile_show()
 }
 void MainWindow::m_on_compile_only(){}
 void MainWindow::on_help(){}
-void MainWindow::on_about(){}
+void MainWindow::on_about()
+{
+}
 
 /* process info from the connection dialog */
 void MainWindow::process_dialog_input(QString &msg)

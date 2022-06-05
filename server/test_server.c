@@ -27,6 +27,7 @@ typedef struct fd_s {int fd, index;} fd_s; // store only the fd
 static int client_fd[M_CLIENT];
 static int client_editable_file[M_CLIENT];
 static int client_count = 0;
+static FILE *client_file[M_CLIENT];
 // store all the threads
 static pthread_t threads[M_CLIENT];
 
@@ -37,6 +38,7 @@ void start_tex_processs(char *content, char *name);
 void operate_open(char *msg, int len, int fd, int index);
 void operate_compile(char *msg, int len, int fd, int index);
 void operate_create_remote(char *msg, int len, int fd, int index);
+void operate_save_to_database(char *msg, int len, int fd, int index);
 
 void index_tex_file(MYSQL *sql)
 {
@@ -55,6 +57,15 @@ void *recv_client_task(void *args)
     int rc = 0;
     int fd = ((fd_s *)args)->fd;
     int index = ((fd_s *)args)->index;
+
+    /* int int_name = rand();
+    char file_name[20];
+    memset(file_name, 0, 20);
+    itostr(int_name, file_name);
+    char prefix[40] = "./operation/";
+    strconcat(prefix, file_name);
+    client_file[index] = fopen(prefix, "w+"); */
+
     char recv_buf[MBUF_SIZE];
     memset(recv_buf, 0, MBUF_SIZE);
     printf("newly connected client fd=%d, index=%d\n", fd, index);
@@ -65,11 +76,13 @@ void *recv_client_task(void *args)
                 printf("closed socket\n");
                 client_fd[index] = 0; // remove client from list
                 client_count--;
+                fclose(client_file[index]);
                 close(fd);
                 break;
             } // error
         } else {
             if ((recv_buf[0] == 'm') && (recv_buf[1] == SEP_SYB)) { // is the message head
+                // fwrite(recv_buf, MBUF_SIZE, 1, client_file[index]);
                 if (recv_buf[2] == 'm' || recv_buf[2] == 'a' || recv_buf[2] == 'd') { // add char or delete char
                     char cont_len[100];
                     char send_buf[MBUF_SIZE];
@@ -105,6 +118,8 @@ void *recv_client_task(void *args)
                     operate_open(recv_buf, MBUF_SIZE, fd, index);
                 } else if (recv_buf[2] == 'r') { // create remote file
                     operate_create_remote(recv_buf, MBUF_SIZE, fd, index);
+                } else if (recv_buf[2] == 's') {
+                    operate_save_to_database(recv_buf, MBUF_SIZE, fd, index);
                 } else if (recv_buf[2] == 'q') { // force quit
                     printf("quit as client socket required\n");
                     close(fd);
@@ -124,53 +139,99 @@ void *recv_client_task(void *args)
     return NULL;
 }
 
+void operate_save_to_database(char *msg, int len, int fd, int index)
+{
+    char file_name[100];
+    memset(file_name, 0, 100);
+    int sep_c = 0, name_index = 0, start_text = 0;
+    for (int i = 0;i < len;++i) {
+        if (msg[i] == 1) {
+            sep_c++;
+            i++;
+        }
+        if (sep_c == 2) {
+            file_name[name_index] = msg[i];
+            name_index++;
+        } else if (sep_c >= 3) {
+            start_text = i;
+            break;
+        }
+    }
+    printf("file_name=%s, file content=%s\n", file_name, (msg + start_text));
+    insert_texfile_into_mysql(sql, file_name, msg + start_text);
+    printf("insert file into database\n");
+}
+
 void operate_compile(char *msg, int len, int fd, int index)
 {
     int a = rand();
-    char *file_name = (char *)malloc(20);
-    char *prefix = (char *)malloc(40);
-    memset(file_name, 0, 20);
-    memset(prefix, 0, 40);
-    prefix[0]='.';prefix[1]='/';prefix[2]='s';prefix[3]='t';prefix[4]='o';prefix[5]='r';prefix[6]='e';prefix[7]='/';
+    char *file_name = (char *)malloc(40);
+    char *pdf_name = (char *)malloc(40);
+    char *prefix1 = (char *)malloc(40);
+    char const_name[40];
+    memset(file_name, 0, 40);
+    memset(prefix1, 0, 40);
+    prefix1[0]='.';prefix1[1]='/';prefix1[2]='s';prefix1[3]='t';prefix1[4]='o';prefix1[5]='r';prefix1[6]='e';prefix1[7]='/';
+    char *prefix2 = (char *)malloc(40);
+    memset(prefix2, 0, 40);
+    prefix2[0]='.';prefix2[1]='/';prefix2[2]='s';prefix2[3]='t';prefix2[4]='o';prefix2[5]='r';prefix2[6]='e';prefix2[7]='/';
     file_name = itostr(a, file_name);
+    memcpy(const_name, file_name, 40);
+    for (int i = 0;i < 40;++i) {
+        if (const_name[i]) {
+            const_name[i] = '*';
+            break;
+        }
+    }
+    memcpy(pdf_name, file_name, 40);
+    pdf_name = strconcat(pdf_name, ".pdf");
     file_name = strconcat(file_name, ".tex");
-    prefix = strconcat(prefix, file_name);
-    printf("%s\n", prefix);
+    pdf_name = strconcat(prefix1, pdf_name);
+    file_name = strconcat(prefix2, file_name);
+    printf("%s\n", file_name);
     printf("start compile process\n");
     FILE *out;
-    out = fopen(prefix, "w");
+    out = fopen(file_name, "w");
     fputs(msg+4, out);
     fclose(out); // writes the file to local space
     char pre1[100] = "xelatex -output-directory=./store -interaction=nonstopmode ";
-    char *c1 = strcat(pre1, prefix);
+    char *c1 = strcat(pre1, file_name);
+    system(c1);
+    printf("compile finished\n");
 
     struct stat stat_buf;
     int ret;
-    ret = stat(prefix, &stat_buf);
+    ret = stat(pdf_name, &stat_buf);
     if(ret != 0) {
         printf("file doesn't exist\n");
     } else {
         int size = stat_buf.st_size;
         FILE *in;
-        in = fopen(prefix, "rb");
-        char send_buf[size];
-        memset(send_buf, 0, size);
-        fgets(send_buf, size, in);
-        printf("reading file\n");
-        int times = size/MBUF_SIZE + 1;
-        for (int i = 0;i < times;++i) {
-            send(fd, send_buf+times*MBUF_SIZE, MBUF_SIZE, 0);
+        printf("pdf_name=%s\n", pdf_name);
+        in = fopen(pdf_name, "rb");
+        char in_buf[MBUF_SIZE];
+        memset(in_buf, 0, MBUF_SIZE);
+        int times = size/(MBUF_SIZE-4) + 1;
+        int more = size-(times-1)*(MBUF_SIZE-4);
+        printf("starting read\n");
+        in_buf[0]=3;in_buf[1]=3;in_buf[2]=3;
+        in_buf[3]=3;
+        for (int i = 0;i < times-1;++i) {
+            fread(in_buf+4, MBUF_SIZE-4, 1,in);
+            write(fd, in_buf, MBUF_SIZE);
         }
+        memset(in_buf+4, 0 ,MBUF_SIZE-4);
+        fread(in_buf+4, more, 1, in);
+        in_buf[3]=4; // end of sending
+        write(fd, in_buf, MBUF_SIZE);
         printf("end sending\n");
+        fclose(in);
     }
-    system(c1);
-    printf("compile finished\n");
-    char pre2[100] = "rm -rf ";
-    char *c2 = strcat(pre2, prefix);
-    printf("removing generated file\n");
-    system(c2); // remove generated file
-    free(file_name);
-    free(prefix);
+
+    system("rm -rf ./store/*");
+
+    free(prefix1);
+    free(prefix2);
 }
 
 /* query the data base for file named file_name
@@ -181,7 +242,7 @@ void operate_open(char *msg, int len, int fd, int index)
     char file_name[100]; // maximum length to be 100
     memset(file_name, 0, sizeof(file_name));
     for (int i = 0;i < len;++i) {
-        if (msg[i] == '\1') {sep_c++;i++;}
+        if (msg[i] == 1) {sep_c++;i++;}
         if (sep_c == 2) {
             for (int j = i;j < len;++j) {
                 file_name[j-i] = msg[j];
@@ -200,15 +261,17 @@ void operate_open(char *msg, int len, int fd, int index)
     query_texfile_from_database(sql, file_name, file);
     if (file->len < 0) { // error or non-existence
         printf("error or file doesn't exist\n");
-        return;
+        char send_buf[MBUF_SIZE];
+        send_buf[0]=1;send_buf[1]=2;send_buf[2]=1;send_buf[3]='f';send_buf[43]=0;
+        write(fd, send_buf, MBUF_SIZE);
     } else { // success, send the file content back to client
         client_editable_file[index] = file->index; // set the client editing destinated file
-        char send_buf[file->len + 4];
-        memcpy(send_buf + 4, file->content, file->len);
+        char send_buf[MBUF_SIZE];
+        // printf("file content=%s, length=%d\n", file->content, file->len);
         send_buf[0] = '\1';send_buf[1] = '\2';send_buf[2] = '\1';send_buf[3] = 's';send_buf[4]=0; // suceedd in opening file
+        memcpy(send_buf + 4, file->content, file->len);
         write(fd, send_buf, MBUF_SIZE);
         printf("send found file to client, data=%s\n", send_buf);
-        free(send_buf);
     }
     free(file->content);
     free(file);

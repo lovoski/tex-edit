@@ -13,6 +13,9 @@
 /server/test/
 /test/
 
+/resource/test/*
+/resource/process*
+
 /server/store/*
 
 /server/test_server

@@ -44,7 +44,7 @@ void SocketThread::start_listening_thread()
                 printf("break loop due to killed connection\n");
                 break; // this means the connection is not available
             }
-            ::usleep(500000); // sleep for 0.5s
+            ::usleep(200000); // sleep for 0.2s
             //printf("wait=%d, rc=%d, errno=%d\n",wait_count, rc, errno);
             wait_count++;
             // break; // when the connection is dead // this is non-blocking soccket, no need for break

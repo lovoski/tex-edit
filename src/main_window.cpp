@@ -197,6 +197,7 @@ void MainWindow::setup_editor(QsciScintilla *editor)
     //m_editor->setLexer(textLexer);
     //editor->setCaretForegroundColor(QColor(250,0,0));
     m_editor->setCaretWidth(5);
+    //m_editor->setCaretForegroundColor(QColor(200,0,0));
     QFont dest_font;
     dest_font.setPointSize(14);
     editor->setFont(dest_font);

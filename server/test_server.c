@@ -76,7 +76,7 @@ void *recv_client_task(void *args)
                 printf("closed socket\n");
                 client_fd[index] = 0; // remove client from list
                 client_count--;
-                fclose(client_file[index]);
+                // fclose(client_file[index]);
                 close(fd);
                 break;
             } // error
@@ -158,7 +158,7 @@ void operate_save_to_database(char *msg, int len, int fd, int index)
         }
     }
     printf("file_name=%s, file content=%s\n", file_name, (msg + start_text));
-    insert_texfile_into_mysql(sql, file_name, msg + start_text);
+    insert_texfile_into_mysql(sql, file_name, (msg + start_text));
     printf("insert file into database\n");
 }
 
